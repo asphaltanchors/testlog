@@ -42,8 +42,8 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showingProductEditor: Product?
     @State private var pendingProductDeletion: Product?
-    @State private var isAnchorsExpanded = true
-    @State private var isAdhesivesExpanded = true
+    @AppStorage("sidebar.products.anchorsExpanded") private var isAnchorsExpanded = true
+    @AppStorage("sidebar.products.adhesivesExpanded") private var isAdhesivesExpanded = true
 
     private var selectedTests: [PullTest] {
         allTests.filter { selectedTestIDs.contains($0.persistentModelID) }

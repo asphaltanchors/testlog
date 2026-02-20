@@ -14,6 +14,7 @@ struct TestDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Product.name) private var allProducts: [Product]
     @Query(sort: \Site.name) private var allSites: [Site]
+    @Query private var allTests: [PullTest]
 
     private var anchorProducts: [Product] {
         allProducts.filter {
@@ -37,6 +38,7 @@ struct TestDetailView: View {
         FailureFamily.options(for: test.testType)
     }
     @State private var showingDeleteConfirmation = false
+    @State private var isGridPreviewExpanded = false
 
     var body: some View {
         Form {
@@ -207,7 +209,7 @@ struct TestDetailView: View {
 
     @ViewBuilder
     private var siteAndLocationSection: some View {
-        Section("Site & Location") {
+        Section("Site & Grid") {
             Picker("Site", selection: $test.site) {
                 Text("None").tag(nil as Site?)
                 ForEach(allSites, id: \.persistentModelID) { site in
@@ -217,7 +219,7 @@ struct TestDetailView: View {
 
             if allSites.isEmpty {
                 Button("Create Main Pad Site") {
-                    let site = Site(name: "Main Pad", isPrimaryPad: true, gridColumns: 50, gridRows: 15)
+                    let site = Site(name: "Main Pad", isPrimaryPad: true, gridColumns: 50, gridRows: 50)
                     modelContext.insert(site)
                     test.site = site
                 }
@@ -227,7 +229,7 @@ struct TestDetailView: View {
                 locationEditor(location)
             } else {
                 Button("Add Location") {
-                    let location = Location(mode: .gridCell, site: test.site)
+                    let location = Location(site: test.site)
                     modelContext.insert(location)
                     test.location = location
                 }
@@ -237,28 +239,20 @@ struct TestDetailView: View {
 
     @ViewBuilder
     private func locationEditor(_ location: Location) -> some View {
-        Picker("Location Mode", selection: Binding(
-            get: { location.mode },
-            set: { location.mode = $0 }
-        )) {
-            ForEach(LocationReferenceMode.allCases) { mode in
-                Text(mode.rawValue).tag(mode)
-            }
-        }
-
-        if location.mode == .gridCell || location.mode == .imageGridCell {
+        Group {
             TextField("Grid Column", text: Binding(
                 get: { location.gridColumn ?? "" },
-                set: { location.gridColumn = normalizedTextOrNil($0) }
+                set: { location.gridColumn = normalizedGridColumnOrNil($0) }
             ))
 
             HStack {
                 Text("Grid Row")
                 Spacer()
-                TextField("Row", value: Binding(
+                TextField("", value: Binding(
                     get: { location.gridRow },
                     set: { location.gridRow = $0 }
                 ), format: .number)
+                    .labelsHidden()
                     .multilineTextAlignment(.trailing)
                 #if os(iOS)
                     .keyboardType(.numberPad)
@@ -266,80 +260,233 @@ struct TestDetailView: View {
                     .frame(width: 80)
             }
 
-            TextField("Subcell", text: Binding(
-                get: { location.gridSubcell ?? "" },
-                set: { location.gridSubcell = normalizedTextOrNil($0) }
-            ))
-        }
-
-        if location.mode == .imagePin || location.mode == .imageGridCell {
-            if let site = test.site {
-                PhotoMapPickerView(
-                    site: site,
-                    x: Binding(
-                        get: { location.imageX },
-                        set: { location.imageX = $0 }
-                    ),
-                    y: Binding(
-                        get: { location.imageY },
-                        set: { location.imageY = $0 }
-                    ),
-                    showGridOverlay: location.mode == .imageGridCell
-                )
+            if let coordinate = coordinateLabel(column: location.gridColumn, row: location.gridRow) {
+                LabeledContent("Coordinate", value: coordinate)
             } else {
-                Text("Select a site to enable photo map pinning.")
+                Text("Use spreadsheet-style coordinates like A1, L50, or AX15.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            HStack {
-                Text("Image X (0-1)")
-                Spacer()
-                TextField("X", value: Binding(
-                    get: { location.imageX },
-                    set: { location.imageX = $0 }
-                ), format: .number)
-                    .multilineTextAlignment(.trailing)
-                #if os(iOS)
-                    .keyboardType(.decimalPad)
-                #endif
-                    .frame(width: 80)
+            if
+                let columnIndex = gridColumnIndex(from: location.gridColumn),
+                let rowIndex = validGridRow(location.gridRow)
+            {
+                let previewColumns = max(siteGridColumns, columnIndex)
+                let previewRows = max(siteGridRows, rowIndex)
+                DisclosureGroup("Grid Preview", isExpanded: $isGridPreviewExpanded) {
+                    GridCoordinatePreview(
+                        columnIndex: columnIndex,
+                        rowIndex: rowIndex,
+                        totalColumns: previewColumns,
+                        totalRows: previewRows,
+                        maxColumnLabel: gridColumnLabel(for: previewColumns)
+                    )
+                    .padding(.top, 6)
+                }
             }
-            HStack {
-                Text("Image Y (0-1)")
-                Spacer()
-                TextField("Y", value: Binding(
-                    get: { location.imageY },
-                    set: { location.imageY = $0 }
-                ), format: .number)
-                    .multilineTextAlignment(.trailing)
-                #if os(iOS)
-                    .keyboardType(.decimalPad)
-                #endif
-                    .frame(width: 80)
+
+            if let conflictMessage = locationConflictMessage(for: location) {
+                Label(conflictMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
-        }
 
-        TextField("Location Label", text: Binding(
-            get: { location.label ?? "" },
-            set: { location.label = normalizedTextOrNil($0) }
-        ))
-
-        TextField("Location Notes", text: Binding(
-            get: { location.notes ?? "" },
-            set: { location.notes = normalizedTextOrNil($0) }
-        ), axis: .vertical)
-        .lineLimit(2...4)
-
-        Button("Clear Location", role: .destructive) {
-            modelContext.delete(location)
-            test.location = nil
+            Button("Clear Location", role: .destructive) {
+                modelContext.delete(location)
+                test.location = nil
+            }
         }
     }
 
-    private func normalizedTextOrNil(_ value: String) -> String? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+    private var siteGridColumns: Int {
+        max(test.site?.gridColumns ?? 0, 1)
+    }
+
+    private var siteGridRows: Int {
+        max(test.site?.gridRows ?? 0, 1)
+    }
+
+    private func validGridRow(_ row: Int?) -> Int? {
+        guard let row, row > 0 else { return nil }
+        return row
+    }
+
+    private func coordinateLabel(column: String?, row: Int?) -> String? {
+        guard
+            let columnIndex = gridColumnIndex(from: column),
+            let row = validGridRow(row)
+        else {
+            return nil
+        }
+        return "\(gridColumnLabel(for: columnIndex))\(row)"
+    }
+
+    private func gridCoordinateKey(column: String?, row: Int?) -> String? {
+        guard
+            let columnIndex = gridColumnIndex(from: column),
+            let row = validGridRow(row)
+        else {
+            return nil
+        }
+        return "\(columnIndex)-\(row)"
+    }
+
+    private func locationConflictMessage(for location: Location) -> String? {
+        guard
+            let siteID = test.site?.persistentModelID,
+            let key = gridCoordinateKey(column: location.gridColumn, row: location.gridRow)
+        else {
+            return nil
+        }
+
+        let conflicts = allTests.filter { other in
+            guard other.persistentModelID != test.persistentModelID else { return false }
+            guard other.site?.persistentModelID == siteID else { return false }
+            return gridCoordinateKey(column: other.location?.gridColumn, row: other.location?.gridRow) == key
+        }
+
+        guard !conflicts.isEmpty else { return nil }
+        let labels = conflicts.compactMap { $0.testID }.sorted()
+        guard !labels.isEmpty else {
+            return "This coordinate is already used by another test."
+        }
+
+        if labels.count > 3 {
+            let summary = labels.prefix(3).joined(separator: ", ")
+            return "This coordinate is already used by \(summary), +\(labels.count - 3) more."
+        }
+
+        return "This coordinate is already used by \(labels.joined(separator: ", "))."
+    }
+
+    private func gridColumnIndex(from value: String?) -> Int? {
+        guard let normalized = normalizedGridColumnOrNil(value ?? "") else { return nil }
+
+        if let numeric = Int(normalized), numeric > 0 {
+            return numeric
+        }
+
+        let uppercased = normalized.uppercased()
+        guard uppercased.allSatisfy(\.isLetter) else { return nil }
+
+        var value = 0
+        for scalar in uppercased.unicodeScalars {
+            guard scalar.value >= 65, scalar.value <= 90 else { return nil }
+            value = value * 26 + Int(scalar.value - 64)
+        }
+        return value > 0 ? value : nil
+    }
+
+    private func gridColumnLabel(for index: Int) -> String {
+        guard index > 0 else { return "?" }
+
+        var value = index
+        var characters: [Character] = []
+        while value > 0 {
+            let remainder = (value - 1) % 26
+            guard let scalar = UnicodeScalar(65 + remainder) else { break }
+            characters.append(Character(scalar))
+            value = (value - 1) / 26
+        }
+        return String(characters.reversed())
+    }
+
+    private func normalizedGridColumnOrNil(_ value: String) -> String? {
+        let compact = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+            .replacingOccurrences(of: " ", with: "")
+        return compact.isEmpty ? nil : compact
+    }
+
+}
+
+private struct GridCoordinatePreview: View {
+    let columnIndex: Int
+    let rowIndex: Int
+    let totalColumns: Int
+    let totalRows: Int
+    let maxColumnLabel: String
+
+    private let cellSize: CGFloat = 10
+
+    private var previewWidth: CGFloat {
+        CGFloat(totalColumns) * cellSize
+    }
+
+    private var previewHeight: CGFloat {
+        CGFloat(totalRows) * cellSize
+    }
+
+    private var viewportHeight: CGFloat {
+        min(360, max(180, previewHeight))
+    }
+
+    private var pointX: CGFloat {
+        (CGFloat(columnIndex) - 0.5) * cellSize
+    }
+
+    private var pointY: CGFloat {
+        (CGFloat(rowIndex) - 0.5) * cellSize
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack {
+                    Text("Row 1")
+                    Spacer()
+                    Text("Row \(totalRows)")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(height: viewportHeight)
+
+                ScrollView([.horizontal, .vertical]) {
+                    ZStack(alignment: .topLeading) {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(.quaternary.opacity(0.2))
+                            .frame(width: previewWidth, height: previewHeight)
+
+                        Path { path in
+                            if totalColumns > 1 {
+                                for column in 1..<totalColumns {
+                                    let x = CGFloat(column) * cellSize
+                                    path.move(to: CGPoint(x: x, y: 0))
+                                    path.addLine(to: CGPoint(x: x, y: previewHeight))
+                                }
+                            }
+
+                            if totalRows > 1 {
+                                for row in 1..<totalRows {
+                                    let y = CGFloat(row) * cellSize
+                                    path.move(to: CGPoint(x: 0, y: y))
+                                    path.addLine(to: CGPoint(x: previewWidth, y: y))
+                                }
+                            }
+                        }
+                        .stroke(.secondary.opacity(0.25), lineWidth: 0.5)
+
+                        Circle()
+                            .fill(.red)
+                            .frame(width: 12, height: 12)
+                            .overlay(Circle().stroke(.white, lineWidth: 2))
+                            .position(x: pointX, y: pointY)
+                    }
+                    .frame(width: previewWidth, height: previewHeight)
+                }
+                .frame(height: viewportHeight)
+            }
+
+            HStack {
+                Text("A")
+                Spacer()
+                Text(maxColumnLabel)
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
     }
 }
 

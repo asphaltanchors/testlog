@@ -13,28 +13,32 @@ import SwiftData
 enum SidebarItem: Hashable {
     case allTests
     case allProducts
+    case allSites
     case productCategory(ProductCategory)
     case product(PersistentIdentifier)
+    case site(PersistentIdentifier)
     case status(TestStatus)
 }
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Product.sku) private var allProducts: [Product]
+    @Query(sort: \Product.name) private var allProducts: [Product]
+    @Query(sort: \Site.name) private var allSites: [Site]
 
     @Query private var allTests: [PullTest]
 
     private var anchorProducts: [Product] {
-        allProducts.filter { $0.category == .anchor }
+        allProducts.filter { $0.category == .anchor && $0.isActive }
     }
 
     private var adhesiveProducts: [Product] {
-        allProducts.filter { $0.category == .adhesive }
+        allProducts.filter { $0.category == .adhesive && $0.isActive }
     }
 
     @State private var selectedSidebarItem: SidebarItem? = .allTests
     @State private var selectedTestIDs: Set<PersistentIdentifier> = []
     @State private var selectedProductIDs: Set<PersistentIdentifier> = []
+    @State private var selectedSiteIDs: Set<PersistentIdentifier> = []
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showingProductEditor: Product?
     @State private var pendingProductDeletion: Product?
@@ -76,13 +80,14 @@ struct ContentView: View {
             }
         } message: {
             if let product = pendingProductDeletion {
-                Text("This will delete \(product.sku). Tests using this product will lose their product reference.")
+                Text("This will delete \(product.name). Tests using this product will lose their product reference.")
             }
         }
         .onChange(of: selectedSidebarItem) { _, _ in
             // Keep detail pane in sync with the active middle-column dataset.
             selectedTestIDs.removeAll()
             selectedProductIDs.removeAll()
+            selectedSiteIDs.removeAll()
         }
     }
 
@@ -93,6 +98,7 @@ struct ContentView: View {
             Section("Library") {
                 sidebarRow("All Tests", icon: "flask", tag: .allTests, badge: allTests.count)
                 sidebarRow("All Products", icon: "shippingbox", tag: .allProducts, badge: allProducts.count)
+                sidebarRow("All Sites", icon: "map", tag: .allSites, badge: allSites.count)
             }
 
             Section("Status") {
@@ -129,12 +135,35 @@ struct ContentView: View {
                 .buttonStyle(.borderless)
             }
 
+            Section("Sites") {
+                ForEach(allSites, id: \.persistentModelID) { site in
+                    siteSidebarRow(site)
+                }
+                Button {
+                    createSite()
+                } label: {
+                    Label("New Site", systemImage: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+            }
+
             if allProducts.isEmpty {
                 Section {
                     Button {
                         seedDefaultProducts(context: modelContext)
                     } label: {
                         Label("Seed Default Products", systemImage: "arrow.down.circle")
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+
+            if allSites.isEmpty {
+                Section {
+                    Button {
+                        seedDefaultSites(context: modelContext)
+                    } label: {
+                        Label("Seed Main Pad Site", systemImage: "map")
                     }
                     .buttonStyle(.borderless)
                 }
@@ -163,7 +192,7 @@ struct ContentView: View {
     private func productSidebarRow(_ product: Product) -> some View {
         let count = product.tests.count + product.adhesiveTests.count
         return sidebarRow(
-            product.sku,
+            product.name,
             icon: product.category == .anchor ? "shippingbox" : "drop.fill",
             tag: .product(product.persistentModelID),
             badge: count
@@ -177,6 +206,16 @@ struct ContentView: View {
                 pendingProductDeletion = product
             }
         }
+    }
+
+    private func siteSidebarRow(_ site: Site) -> some View {
+        let count = allTests.filter { $0.site?.persistentModelID == site.persistentModelID }.count
+        return sidebarRow(
+            site.name,
+            icon: site.isPrimaryPad ? "star.circle.fill" : "map",
+            tag: .site(site.persistentModelID),
+            badge: count
+        )
     }
 
     // MARK: - Content (middle column)
@@ -200,6 +239,15 @@ struct ContentView: View {
                         preferredCategory: .anchor,
                         destination: .allProducts
                     )
+                }
+            )
+        case .allSites:
+            SiteTableView(
+                sites: allSites,
+                selectedSiteIDs: $selectedSiteIDs,
+                title: "All Sites",
+                onAddSite: {
+                    createSite(destination: .allSites)
                 }
             )
         case .productCategory(let category):
@@ -226,10 +274,21 @@ struct ContentView: View {
                 TestTableView(
                     tests: relatedTests,
                     selectedTestIDs: $selectedTestIDs,
-                    title: "\(product.sku) — \(product.displayName)"
+                    title: product.name
                 )
             } else {
                 ContentUnavailableView("Product Not Found", systemImage: "shippingbox")
+            }
+        case .site(let siteID):
+            if let site = allSites.first(where: { $0.persistentModelID == siteID }) {
+                let related = allTests.filter { $0.site?.persistentModelID == siteID }
+                TestTableView(
+                    tests: related,
+                    selectedTestIDs: $selectedTestIDs,
+                    title: site.name
+                )
+            } else {
+                ContentUnavailableView("Site Not Found", systemImage: "map")
             }
         case nil:
             ContentUnavailableView("Select a Category", systemImage: "sidebar.left", description: Text("Choose a category from the sidebar."))
@@ -247,6 +306,19 @@ struct ContentView: View {
                 ProductDetailView(product: product)
             } else {
                 ContentUnavailableView("Select a Product", systemImage: "shippingbox", description: Text("Choose a product to view its details."))
+            }
+        case .allSites:
+            let selectedSites = allSites.filter { selectedSiteIDs.contains($0.persistentModelID) }
+            if let site = selectedSites.first, selectedSites.count == 1 {
+                SiteDetailView(site: site)
+            } else {
+                ContentUnavailableView("Select a Site", systemImage: "map", description: Text("Choose a site to view its details."))
+            }
+        case .site(let siteID):
+            if let site = allSites.first(where: { $0.persistentModelID == siteID }) {
+                SiteDetailView(site: site)
+            } else {
+                ContentUnavailableView("Site Not Found", systemImage: "map")
             }
         default:
             let selected = selectedTests
@@ -294,8 +366,7 @@ struct ContentView: View {
         destination: SidebarItem = .allProducts
     ) {
         let product = Product(
-            sku: nextDraftProductSKU(),
-            displayName: "New Product",
+            name: "New Product",
             category: preferredCategory
         )
         modelContext.insert(product)
@@ -304,17 +375,18 @@ struct ContentView: View {
         showingProductEditor = product
     }
 
-    private func nextDraftProductSKU() -> String {
-        let draftNumbers = allProducts.compactMap { product -> Int? in
-            guard product.sku.hasPrefix("NEW-") else { return nil }
-            return Int(product.sku.dropFirst(4))
-        }
-        let nextNumber = (draftNumbers.max() ?? 0) + 1
-        return String(format: "NEW-%03d", nextNumber)
+    private func createSite(destination: SidebarItem = .allSites) {
+        let site = Site(
+            name: "New Site",
+            isPrimaryPad: allSites.isEmpty
+        )
+        modelContext.insert(site)
+        selectedSidebarItem = destination
+        selectedSiteIDs = [site.persistentModelID]
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: [PullTest.self, Product.self], inMemory: true)
+        .modelContainer(for: [PullTest.self, Product.self, Site.self, Location.self, TestMeasurement.self, Asset.self], inMemory: true)
 }

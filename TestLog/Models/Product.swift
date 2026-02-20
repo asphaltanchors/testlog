@@ -10,10 +10,12 @@ import SwiftData
 
 @Model
 final class Product {
-    @Attribute(.unique) var sku: String
-    var displayName: String
+    var name: String
     var category: ProductCategory
     var notes: String?
+    var isActive: Bool
+    var retiredOn: Date?
+    var retirementNote: String?
 
     @Relationship(inverse: \PullTest.product)
     var tests: [PullTest] = []
@@ -21,10 +23,19 @@ final class Product {
     @Relationship(inverse: \PullTest.adhesive)
     var adhesiveTests: [PullTest] = []
 
-    init(sku: String, displayName: String, category: ProductCategory = .anchor, notes: String? = nil) {
-        self.sku = sku
-        self.displayName = displayName
+    init(
+        name: String,
+        category: ProductCategory = .anchor,
+        notes: String? = nil,
+        isActive: Bool = true,
+        retiredOn: Date? = nil,
+        retirementNote: String? = nil
+    ) {
+        self.name = name
         self.category = category
         self.notes = notes
+        self.isActive = isActive
+        self.retiredOn = retiredOn
+        self.retirementNote = retirementNote
     }
 }

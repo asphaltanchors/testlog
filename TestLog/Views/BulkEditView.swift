@@ -11,13 +11,13 @@ import SwiftData
 struct BulkEditView: View {
     let tests: [PullTest]
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Product.sku) private var allProducts: [Product]
+    @Query(sort: \Product.name) private var allProducts: [Product]
 
     private var anchorProducts: [Product] {
-        allProducts.filter { $0.category == .anchor }
+        allProducts.filter { $0.category == .anchor && $0.isActive }
     }
     private var adhesiveProducts: [Product] {
-        allProducts.filter { $0.category == .adhesive }
+        allProducts.filter { $0.category == .adhesive && $0.isActive }
     }
 
     var body: some View {
@@ -41,12 +41,12 @@ struct BulkEditView: View {
             }
 
             Section("Set Anchor") {
-                currentValueSummary("Anchor", values: tests.map { $0.product?.sku ?? "None" })
+                currentValueSummary("Anchor", values: tests.map { $0.product?.name ?? "None" })
                 ForEach(anchorProducts, id: \.persistentModelID) { product in
                     Button {
                         applyToAll { $0.product = product }
                     } label: {
-                        Label(product.sku + " — " + product.displayName, systemImage: "shippingbox")
+                        Label(product.name, systemImage: "shippingbox")
                     }
                 }
                 Button("Clear Anchor") {
@@ -56,12 +56,12 @@ struct BulkEditView: View {
             }
 
             Section("Set Adhesive") {
-                currentValueSummary("Adhesive", values: tests.map { $0.adhesive?.sku ?? "None" })
+                currentValueSummary("Adhesive", values: tests.map { $0.adhesive?.name ?? "None" })
                 ForEach(adhesiveProducts, id: \.persistentModelID) { product in
                     Button {
                         applyToAll { $0.adhesive = product }
                     } label: {
-                        Label(product.sku + " — " + product.displayName, systemImage: "drop.fill")
+                        Label(product.name, systemImage: "drop.fill")
                     }
                 }
                 Button("Clear Adhesive") {

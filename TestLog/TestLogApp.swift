@@ -15,6 +15,7 @@ struct TestLogApp: App {
             Product.self,
             PullTest.self,
             TestMeasurement.self,
+            Site.self,
             Location.self,
             Asset.self,
         ])

@@ -23,11 +23,16 @@ struct TestRowView: View {
             }
             HStack(spacing: 8) {
                 if let product = test.product {
-                    Label(product.sku, systemImage: "shippingbox")
+                    Label(product.name, systemImage: "shippingbox")
                         .font(.subheadline)
                 }
+                if let site = test.site {
+                    Label(site.name, systemImage: "map")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
                 if let adhesive = test.adhesive {
-                    Text(adhesive.sku)
+                    Text(adhesive.name)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -36,6 +41,11 @@ struct TestRowView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+            }
+            if let location = test.location {
+                Text(location.displayLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             if let date = test.testedDate {
                 Text(date, format: .dateTime.month().day().year())

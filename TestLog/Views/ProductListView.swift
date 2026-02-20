@@ -23,12 +23,27 @@ struct ProductDetailView: View {
     var body: some View {
         Form {
             Section("Product Info") {
-                TextField("SKU", text: $product.sku)
-                TextField("Display Name", text: $product.displayName)
+                TextField("Name", text: $product.name)
                 Picker("Category", selection: $product.category) {
                     ForEach(ProductCategory.allCases) { cat in
                         Text(cat.rawValue).tag(cat)
                     }
+                }
+                Toggle("Active", isOn: $product.isActive)
+                    .onChange(of: product.isActive) { _, isActive in
+                        if isActive {
+                            product.retiredOn = nil
+                        } else if product.retiredOn == nil {
+                            product.retiredOn = Date()
+                        }
+                    }
+                if !product.isActive {
+                    OptionalDatePicker("Retired On", selection: $product.retiredOn)
+                    TextField("Retirement Note", text: Binding(
+                        get: { product.retirementNote ?? "" },
+                        set: { product.retirementNote = $0.isEmpty ? nil : $0 }
+                    ), axis: .vertical)
+                    .lineLimit(2...4)
                 }
                 TextField("Notes", text: Binding(
                     get: { product.notes ?? "" },
@@ -54,7 +69,7 @@ struct ProductDetailView: View {
                 }
             }
         }
-        .navigationTitle(product.sku)
+        .navigationTitle(product.name)
         #if os(macOS)
         .formStyle(.grouped)
         #endif
@@ -71,7 +86,7 @@ struct ProductDetailView: View {
                 dismiss()
             }
         } message: {
-            Text("This will delete \(product.sku). Tests using this product will lose their product reference.")
+            Text("This will delete \(product.name). Tests using this product will lose their product reference.")
         }
     }
 }
@@ -79,23 +94,23 @@ struct ProductDetailView: View {
 // MARK: - Seed Default Products
 
 func seedDefaultProducts(context: ModelContext) {
-    let anchors: [(String, String)] = [
-        ("SP10", "1/4\" Spike Anchor"),
-        ("SP12", "5/16\" Spike Anchor"),
-        ("SP18", "3/8\" Spike Anchor"),
-        ("SP58", "5/8\" Spike Anchor"),
-        ("SP88", "7/8\" Spike Anchor"),
+    let anchors: [String] = [
+        "SP10",
+        "SP12",
+        "SP18",
+        "SP58",
+        "SP88",
     ]
-    for (sku, name) in anchors {
-        context.insert(Product(sku: sku, displayName: name, category: .anchor))
+    for name in anchors {
+        context.insert(Product(name: name, category: .anchor))
     }
 
-    let adhesives: [(String, String)] = [
-        ("ROK700", "ROK 700 Adhesive"),
-        ("Quikrete", "Quikrete Anchoring Adhesive"),
-        ("Damtite", "Damtite Adhesive"),
+    let adhesives: [String] = [
+        "EPX3 - MKT LiquidROK 700",
+        "EPX5 - MKT LiquidROK 200",
+        "EPX2 - Damtite Anchoring Cement",
     ]
-    for (sku, name) in adhesives {
-        context.insert(Product(sku: sku, displayName: name, category: .adhesive))
+    for name in adhesives {
+        context.insert(Product(name: name, category: .adhesive))
     }
 }

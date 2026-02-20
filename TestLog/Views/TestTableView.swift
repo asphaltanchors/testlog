@@ -16,6 +16,7 @@ struct TestTableView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Query private var allTests: [PullTest]
+    @Query(sort: \Site.name) private var allSites: [Site]
     @State private var searchText = ""
     @State private var sortOrder: [KeyPathComparator<PullTest>] = [
         KeyPathComparator(\PullTest.sortTestID, comparator: .localizedStandard)
@@ -30,8 +31,10 @@ struct TestTableView: View {
         let text = searchText.lowercased()
         return base.filter { test in
             (test.testID?.lowercased().contains(text) ?? false) ||
-            (test.product?.sku.lowercased().contains(text) ?? false) ||
-            (test.adhesive?.sku.lowercased().contains(text) ?? false) ||
+            (test.site?.name.lowercased().contains(text) ?? false) ||
+            (test.location?.displayLabel.lowercased().contains(text) ?? false) ||
+            (test.product?.name.lowercased().contains(text) ?? false) ||
+            (test.adhesive?.name.lowercased().contains(text) ?? false) ||
             (test.notes?.lowercased().contains(text) ?? false)
         }
     }
@@ -75,13 +78,13 @@ struct TestTableView: View {
             }
             .width(min: 75, ideal: 85)
 
-            TableColumn("Product", value: \.sortProductSKU) { test in
-                Text(test.product?.sku ?? "—")
+            TableColumn("Product", value: \.sortProductName) { test in
+                Text(test.product?.name ?? "—")
             }
             .width(min: 50, ideal: 60)
 
-            TableColumn("Adhesive", value: \.sortAdhesiveSKU) { test in
-                Text(test.adhesive?.sku ?? "—")
+            TableColumn("Adhesive", value: \.sortAdhesiveName) { test in
+                Text(test.adhesive?.name ?? "—")
             }
             .width(min: 65, ideal: 80)
 
@@ -179,6 +182,7 @@ struct TestTableView: View {
             let test = PullTest(
                 testID: testID,
                 product: product,
+                site: defaultSite(),
                 status: .planned
             )
             modelContext.insert(test)
@@ -200,13 +204,17 @@ struct TestTableView: View {
             }
         }
     }
+
+    private func defaultSite() -> Site? {
+        allSites.first(where: \.isPrimaryPad) ?? allSites.first
+    }
 }
 
 private extension PullTest {
     var sortTestID: String { testID ?? "" }
     var sortStatus: String { status.rawValue }
-    var sortProductSKU: String { product?.sku ?? "" }
-    var sortAdhesiveSKU: String { adhesive?.sku ?? "" }
+    var sortProductName: String { product?.name ?? "" }
+    var sortAdhesiveName: String { adhesive?.name ?? "" }
     var sortHoleDiameter: String { holeDiameter?.rawValue ?? "" }
     var sortPeakForce: Double { measurements.compactMap(\.force).max() ?? 0 }
     var sortTestedDate: Date { testedDate ?? .distantPast }

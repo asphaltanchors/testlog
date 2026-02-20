@@ -16,21 +16,28 @@ struct ProductTableView: View {
 
     @Environment(\.modelContext) private var modelContext
     @State private var searchText = ""
+    @State private var showArchived = false
     @State private var sortOrder: [KeyPathComparator<Product>] = [
-        KeyPathComparator(\Product.sortSKU, comparator: .localizedStandard)
+        KeyPathComparator(\Product.sortName, comparator: .localizedStandard)
     ]
 
 #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 #endif
 
+    private var displayedProducts: [Product] {
+        products.filter { product in
+            showArchived || product.isActive
+        }
+    }
+
     private var filteredProducts: [Product] {
-        guard !searchText.isEmpty else { return products }
+        guard !searchText.isEmpty else { return displayedProducts }
         let text = searchText.lowercased()
-        return products.filter { product in
-            product.sku.lowercased().contains(text) ||
-            product.displayName.lowercased().contains(text) ||
+        return displayedProducts.filter { product in
+            product.name.lowercased().contains(text) ||
             product.category.rawValue.lowercased().contains(text) ||
+            archiveStatusText(for: product).lowercased().contains(text) ||
             (product.notes?.lowercased().contains(text) ?? false)
         }
     }
@@ -51,6 +58,9 @@ struct ProductTableView: View {
         .searchable(text: $searchText, prompt: "Search products...")
         .toolbar {
             ToolbarItem {
+                Toggle("Show Archived", isOn: $showArchived)
+            }
+            ToolbarItem {
                 Button(action: onAddProduct) {
                     Label("Add Product", systemImage: "plus")
                 }
@@ -61,14 +71,9 @@ struct ProductTableView: View {
 #if os(macOS)
     private var macTable: some View {
         Table(of: Product.self, selection: $selectedProductIDs, sortOrder: $sortOrder) {
-            TableColumn("SKU", value: \.sortSKU) { product in
-                Text(product.sku)
+            TableColumn("Name", value: \.sortName) { product in
+                Text(product.name)
                     .fontWeight(.medium)
-            }
-            .width(min: 80, ideal: 110)
-
-            TableColumn("Name", value: \.sortDisplayName) { product in
-                Text(product.displayName)
             }
             .width(min: 180, ideal: 260)
 
@@ -76,6 +81,11 @@ struct ProductTableView: View {
                 Text(product.category.rawValue)
             }
             .width(min: 90, ideal: 120)
+
+            TableColumn("Status", value: \.sortStatus) { product in
+                Text(archiveStatusText(for: product))
+            }
+            .width(min: 75, ideal: 90)
 
             TableColumn("Tests", value: \.sortUsageCount) { product in
                 Text("\(product.tests.count + product.adhesiveTests.count)")
@@ -159,23 +169,31 @@ private struct ProductRow: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(product.sku)
+                Text(product.name)
                     .fontWeight(.semibold)
-                Text(product.displayName)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
             }
             Spacer()
-            Text(product.category.rawValue)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                if !product.isActive {
+                    Text("Archived")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                Text(product.category.rawValue)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
 
+private func archiveStatusText(for product: Product) -> String {
+    product.isActive ? "Active" : "Archived"
+}
+
 private extension Product {
-    var sortSKU: String { sku }
-    var sortDisplayName: String { displayName }
+    var sortName: String { name }
     var sortCategory: String { category.rawValue }
+    var sortStatus: String { isActive ? "Active" : "Archived" }
     var sortUsageCount: Int { tests.count + adhesiveTests.count }
 }

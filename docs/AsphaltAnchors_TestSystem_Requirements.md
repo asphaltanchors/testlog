@@ -60,6 +60,20 @@ Represents a day or outing in the field where multiple tests are conducted.
 
 ---
 
+### Entity: Site
+Represents a physical testing area (main pad or ad hoc locations).
+
+| Field | Type | Notes |
+|-------|------|-------|
+| id | UUID | Primary key |
+| name | String | Human-readable site name, e.g. "Main Pad" |
+| notes | String? | Site notes |
+| isPrimaryPad | Bool | Marks the default site for new tests |
+| gridColumns | Int? | Optional fixed grid width for structured sites |
+| gridRows | Int? | Optional fixed grid height for structured sites |
+
+---
+
 ### Entity: Test
 The core record. Represents a single anchor installation and its destructive pull test. One installation = one test.
 
@@ -69,7 +83,8 @@ The core record. Represents a single anchor installation and its destructive pul
 | testID | String? | Primary human-readable test identifier, e.g. "T001" |
 | session | TestSession | Parent session (required) |
 | product | Product | Which anchor was tested (required) |
-| location | Location? | Physical grid location (optional) |
+| site | Site? | Physical site where the test occurred |
+| location | Location? | Physical location reference (optional) |
 | installedDate | Date? | When anchor was installed |
 | testedDate | Date? | When pull test was performed |
 | anchorMaterial | String (enum) | Anchor coating/finish: "Zinc", "Stainless" |
@@ -119,18 +134,24 @@ Represents a single point on the force-displacement curve for a test. Replaces t
 ---
 
 ### Entity: Location
-Maps a test to a physical location in the test grid. The test site has a permanent 50×15 asphalt pad; anchors are spaced on a 1-foot grid to ensure no interaction between tests. Once a grid cell has been used for a test it cannot be reused (destructive).
+Maps a test to a physical location reference. Supports grid and image-based mapping.
 
 | Field | Type | Notes |
 |-------|------|-------|
 | id | UUID | Primary key |
-| gridColumn | String | Column letter (A–AX, representing 1–50) |
-| gridRow | Int | Row number 1–15 |
-| displayLabel | String | Computed: e.g. "C5" |
+| site | Site? | Site this location belongs to |
+| mode | String (enum) | `gridCell`, `imagePin`, `imageGridCell` |
+| label | String? | Optional custom label |
+| gridColumn | String? | Grid column for grid modes |
+| gridRow | Int? | Grid row for grid modes |
+| gridSubcell | String? | Optional subcell for offset patterns |
+| imageX | Double? | Normalized image X coordinate (0-1) |
+| imageY | Double? | Normalized image Y coordinate (0-1) |
+| displayLabel | String | Computed summary label |
 | test | Test? | The test at this location (one-to-one, permanent) |
-| notes | String? | Optional notes about this cell |
+| notes | String? | Optional notes about this location |
 
-*The grid is a shared permanent resource across all sessions. A cell is "consumed" once a test is assigned to it. Future sites would require a Site entity and per-site grids.*
+*For the main pad, grid references remain a shared permanent resource where consumed cells are not reused.*
 
 ---
 
@@ -156,7 +177,8 @@ TestSession ──< Test >── Product
                  │
                  ├──< Measurement
                  ├──< Asset
-                 └──── Location
+                 ├──── Location
+                 └──── Site
 ```
 
 ---
@@ -201,7 +223,8 @@ Tests can be in various states. Recommend a `status` enum on the Test entity:
 **Form fields (in logical field order):**
 - Test ID (auto-assigned sequential format, e.g. `T001`)
 - Product (picker)
-- Location (grid picker — visual grid or alphanumeric entry)
+- Site (picker)
+- Location (grid picker, image pin, or image-grid cell)
 - Adhesive (picker)
 - Hole Diameter (picker)
 - Mix Consistency (picker)

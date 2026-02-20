@@ -12,13 +12,20 @@ struct TestDetailView: View {
     @Bindable var test: PullTest
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \Product.sku) private var allProducts: [Product]
+    @Query(sort: \Product.name) private var allProducts: [Product]
+    @Query(sort: \Site.name) private var allSites: [Site]
 
     private var anchorProducts: [Product] {
-        allProducts.filter { $0.category == .anchor }
+        allProducts.filter {
+            $0.category == .anchor &&
+            ($0.isActive || $0.persistentModelID == test.product?.persistentModelID)
+        }
     }
     private var adhesiveProducts: [Product] {
-        allProducts.filter { $0.category == .adhesive }
+        allProducts.filter {
+            $0.category == .adhesive &&
+            ($0.isActive || $0.persistentModelID == test.adhesive?.persistentModelID)
+        }
     }
     private var failureMechanismOptions: [FailureMechanism] {
         FailureMechanism.options(for: test.testType, family: test.failureFamily)
@@ -46,12 +53,14 @@ struct TestDetailView: View {
                 }
             }
 
+            siteAndLocationSection
+
             // MARK: - Product
             Section("Product") {
                 Picker("Anchor", selection: $test.product) {
                     Text("None").tag(nil as Product?)
                     ForEach(anchorProducts, id: \.persistentModelID) { product in
-                        Text("\(product.sku) — \(product.displayName)")
+                        Text(productLabel(product))
                             .tag(product as Product?)
                     }
                 }
@@ -59,7 +68,7 @@ struct TestDetailView: View {
                 Picker("Adhesive", selection: $test.adhesive) {
                     Text("None").tag(nil as Product?)
                     ForEach(adhesiveProducts, id: \.persistentModelID) { product in
-                        Text("\(product.sku) — \(product.displayName)")
+                        Text(productLabel(product))
                             .tag(product as Product?)
                     }
                 }
@@ -154,12 +163,16 @@ struct TestDetailView: View {
         .onAppear {
             test.syncFailureFieldsFromModeIfNeeded()
             test.normalizeFailureSelections()
+            test.location?.site = test.site
         }
         .onChange(of: test.testType) { _, _ in
             test.normalizeFailureSelections()
         }
         .onChange(of: test.failureFamily) { _, _ in
             test.normalizeFailureSelections()
+        }
+        .onChange(of: test.site?.persistentModelID) { _, _ in
+            test.location?.site = test.site
         }
         #if os(macOS)
         .formStyle(.grouped)
@@ -186,6 +199,147 @@ struct TestDetailView: View {
         for index in offsets {
             modelContext.delete(sorted[index])
         }
+    }
+
+    private func productLabel(_ product: Product) -> String {
+        product.isActive ? product.name : "\(product.name) (Archived)"
+    }
+
+    @ViewBuilder
+    private var siteAndLocationSection: some View {
+        Section("Site & Location") {
+            Picker("Site", selection: $test.site) {
+                Text("None").tag(nil as Site?)
+                ForEach(allSites, id: \.persistentModelID) { site in
+                    Text(site.name).tag(site as Site?)
+                }
+            }
+
+            if allSites.isEmpty {
+                Button("Create Main Pad Site") {
+                    let site = Site(name: "Main Pad", isPrimaryPad: true, gridColumns: 50, gridRows: 15)
+                    modelContext.insert(site)
+                    test.site = site
+                }
+            }
+
+            if let location = test.location {
+                locationEditor(location)
+            } else {
+                Button("Add Location") {
+                    let location = Location(mode: .gridCell, site: test.site)
+                    modelContext.insert(location)
+                    test.location = location
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func locationEditor(_ location: Location) -> some View {
+        Picker("Location Mode", selection: Binding(
+            get: { location.mode },
+            set: { location.mode = $0 }
+        )) {
+            ForEach(LocationReferenceMode.allCases) { mode in
+                Text(mode.rawValue).tag(mode)
+            }
+        }
+
+        if location.mode == .gridCell || location.mode == .imageGridCell {
+            TextField("Grid Column", text: Binding(
+                get: { location.gridColumn ?? "" },
+                set: { location.gridColumn = normalizedTextOrNil($0) }
+            ))
+
+            HStack {
+                Text("Grid Row")
+                Spacer()
+                TextField("Row", value: Binding(
+                    get: { location.gridRow },
+                    set: { location.gridRow = $0 }
+                ), format: .number)
+                    .multilineTextAlignment(.trailing)
+                #if os(iOS)
+                    .keyboardType(.numberPad)
+                #endif
+                    .frame(width: 80)
+            }
+
+            TextField("Subcell", text: Binding(
+                get: { location.gridSubcell ?? "" },
+                set: { location.gridSubcell = normalizedTextOrNil($0) }
+            ))
+        }
+
+        if location.mode == .imagePin || location.mode == .imageGridCell {
+            if let site = test.site {
+                PhotoMapPickerView(
+                    site: site,
+                    x: Binding(
+                        get: { location.imageX },
+                        set: { location.imageX = $0 }
+                    ),
+                    y: Binding(
+                        get: { location.imageY },
+                        set: { location.imageY = $0 }
+                    ),
+                    showGridOverlay: location.mode == .imageGridCell
+                )
+            } else {
+                Text("Select a site to enable photo map pinning.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Text("Image X (0-1)")
+                Spacer()
+                TextField("X", value: Binding(
+                    get: { location.imageX },
+                    set: { location.imageX = $0 }
+                ), format: .number)
+                    .multilineTextAlignment(.trailing)
+                #if os(iOS)
+                    .keyboardType(.decimalPad)
+                #endif
+                    .frame(width: 80)
+            }
+            HStack {
+                Text("Image Y (0-1)")
+                Spacer()
+                TextField("Y", value: Binding(
+                    get: { location.imageY },
+                    set: { location.imageY = $0 }
+                ), format: .number)
+                    .multilineTextAlignment(.trailing)
+                #if os(iOS)
+                    .keyboardType(.decimalPad)
+                #endif
+                    .frame(width: 80)
+            }
+        }
+
+        TextField("Location Label", text: Binding(
+            get: { location.label ?? "" },
+            set: { location.label = normalizedTextOrNil($0) }
+        ))
+
+        TextField("Location Notes", text: Binding(
+            get: { location.notes ?? "" },
+            set: { location.notes = normalizedTextOrNil($0) }
+        ), axis: .vertical)
+        .lineLimit(2...4)
+
+        Button("Clear Location", role: .destructive) {
+            modelContext.delete(location)
+            test.location = nil
+        }
+    }
+
+    private func normalizedTextOrNil(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

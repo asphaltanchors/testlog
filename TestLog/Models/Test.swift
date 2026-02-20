@@ -12,6 +12,7 @@ import SwiftData
 final class PullTest {
     var testID: String?
     var product: Product?
+    var site: Site?
     var location: Location?
     var installedDate: Date?
     var testedDate: Date?
@@ -43,6 +44,7 @@ final class PullTest {
     init(
         testID: String? = nil,
         product: Product? = nil,
+        site: Site? = nil,
         location: Location? = nil,
         installedDate: Date? = nil,
         testedDate: Date? = nil,
@@ -62,6 +64,7 @@ final class PullTest {
     ) {
         self.testID = testID
         self.product = product
+        self.site = site
         self.location = location
         self.installedDate = installedDate
         self.testedDate = testedDate

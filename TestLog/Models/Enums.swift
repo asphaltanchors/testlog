@@ -200,3 +200,13 @@ enum AssetType: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 }
+
+// MARK: - Location Reference Mode
+
+enum LocationReferenceMode: String, Codable, CaseIterable, Identifiable {
+    case gridCell = "Grid Cell"
+    case imagePin = "Image Pin"
+    case imageGridCell = "Image Grid Cell"
+
+    var id: String { rawValue }
+}

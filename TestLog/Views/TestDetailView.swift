@@ -36,8 +36,8 @@ struct TestDetailView: View {
             // MARK: - Identity & Status
             Section("Identity & Status") {
                 TextField("Test ID", text: Binding(
-                    get: { test.legacyTestID ?? "" },
-                    set: { test.legacyTestID = $0.isEmpty ? nil : $0 }
+                    get: { test.testID ?? "" },
+                    set: { test.testID = $0.isEmpty ? nil : $0 }
                 ))
                 Picker("Status", selection: $test.status) {
                     ForEach(TestStatus.allCases) { status in
@@ -150,9 +150,9 @@ struct TestDetailView: View {
                 .lineLimit(3...6)
             }
         }
-        .navigationTitle(test.legacyTestID ?? "New Test")
+        .navigationTitle(test.testID ?? "New Test")
         .onAppear {
-            test.syncFailureFieldsFromLegacyIfNeeded()
+            test.syncFailureFieldsFromModeIfNeeded()
             test.normalizeFailureSelections()
         }
         .onChange(of: test.testType) { _, _ in
@@ -177,7 +177,7 @@ struct TestDetailView: View {
                 dismiss()
             }
         } message: {
-            Text("This will permanently delete \(test.legacyTestID ?? "this test") and all its measurements.")
+            Text("This will permanently delete \(test.testID ?? "this test") and all its measurements.")
         }
     }
 

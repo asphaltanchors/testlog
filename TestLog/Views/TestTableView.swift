@@ -18,7 +18,7 @@ struct TestTableView: View {
     @Query private var allTests: [PullTest]
     @State private var searchText = ""
     @State private var sortOrder: [KeyPathComparator<PullTest>] = [
-        KeyPathComparator(\PullTest.sortLegacyTestID, comparator: .localizedStandard)
+        KeyPathComparator(\PullTest.sortTestID, comparator: .localizedStandard)
     ]
 #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -29,7 +29,7 @@ struct TestTableView: View {
         guard !searchText.isEmpty else { return base }
         let text = searchText.lowercased()
         return base.filter { test in
-            (test.legacyTestID?.lowercased().contains(text) ?? false) ||
+            (test.testID?.lowercased().contains(text) ?? false) ||
             (test.product?.sku.lowercased().contains(text) ?? false) ||
             (test.adhesive?.sku.lowercased().contains(text) ?? false) ||
             (test.notes?.lowercased().contains(text) ?? false)
@@ -64,8 +64,8 @@ struct TestTableView: View {
     #if os(macOS)
     private var macTable: some View {
         Table(of: PullTest.self, selection: $selectedTestIDs, sortOrder: $sortOrder) {
-            TableColumn("ID", value: \.sortLegacyTestID) { test in
-                Text(test.legacyTestID ?? "—")
+            TableColumn("ID", value: \.sortTestID) { test in
+                Text(test.testID ?? "—")
                     .fontWeight(.medium)
             }
             .width(min: 50, ideal: 65)
@@ -172,12 +172,12 @@ struct TestTableView: View {
     private func addTest() {
         withAnimation {
             let nextNumber = (allTests.compactMap { test in
-                guard let id = test.legacyTestID, id.hasPrefix("T") else { return nil }
+                guard let id = test.testID, id.hasPrefix("T") else { return nil }
                 return Int(id.dropFirst())
             }.max() ?? 0) + 1
             let testID = String(format: "T%03d", nextNumber)
             let test = PullTest(
-                legacyTestID: testID,
+                testID: testID,
                 product: product,
                 status: .planned
             )
@@ -203,7 +203,7 @@ struct TestTableView: View {
 }
 
 private extension PullTest {
-    var sortLegacyTestID: String { legacyTestID ?? "" }
+    var sortTestID: String { testID ?? "" }
     var sortStatus: String { status.rawValue }
     var sortProductSKU: String { product?.sku ?? "" }
     var sortAdhesiveSKU: String { adhesive?.sku ?? "" }

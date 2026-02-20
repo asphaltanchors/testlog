@@ -66,7 +66,7 @@ The core record. Represents a single anchor installation and its destructive pul
 | Field | Type | Notes |
 |-------|------|-------|
 | id | UUID | Primary key |
-| legacyTestID | String? | e.g. "T001" — for migrating existing data |
+| testID | String? | Primary human-readable test identifier, e.g. "T001" |
 | session | TestSession | Parent session (required) |
 | product | Product | Which anchor was tested (required) |
 | location | Location? | Physical grid location (optional) |
@@ -171,7 +171,7 @@ TestSession ──< Test >── Product
 - **Failure mode is an outcome:** "Snapped head off", "head popped off" etc. indicate anchor failure vs. adhesive failure — scientifically significant distinction.
 - **Mix consistency is a variable:** Adhesive mix ratio/consistency affects results. Currently freeform, should be enumerated.
 - **Some tests are invalid/ignored:** e.g. T013/T014 (no dates), T015 ("IGNORE"). Need a test status field or soft-delete approach.
-- **Legacy test IDs:** T001-T122 should be preserved during migration for traceability.
+- **Test IDs:** Keep sequential IDs (e.g., T001, T122) stable for shorthand communication and traceability.
 
 ---
 
@@ -199,7 +199,7 @@ Tests can be in various states. Recommend a `status` enum on the Test entity:
 5. Data syncs automatically; Mac app picks it up for analysis and video production
 
 **Form fields (in logical field order):**
-- Test ID (auto-assigned, shows legacy format)
+- Test ID (auto-assigned sequential format, e.g. `T001`)
 - Product (picker)
 - Location (grid picker — visual grid or alphanumeric entry)
 - Adhesive (picker)

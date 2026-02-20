@@ -93,7 +93,7 @@ enum TestType: String, Codable, CaseIterable, Identifiable {
 
 // MARK: - Failure Mode
 
-// Legacy single-field failure mode kept for backward compatibility with existing stores.
+// Single-field failure mode retained to support older data formats.
 enum FailureMode: String, Codable, CaseIterable, Identifiable {
     case cleanPull = "Clean Pull"
     case snappedHead = "Snapped Head"

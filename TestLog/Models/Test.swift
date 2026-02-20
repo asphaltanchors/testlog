@@ -10,7 +10,7 @@ import SwiftData
 
 @Model
 final class PullTest {
-    var legacyTestID: String?
+    var testID: String?
     var product: Product?
     var location: Location?
     var installedDate: Date?
@@ -41,7 +41,7 @@ final class PullTest {
     }
 
     init(
-        legacyTestID: String? = nil,
+        testID: String? = nil,
         product: Product? = nil,
         location: Location? = nil,
         installedDate: Date? = nil,
@@ -60,7 +60,7 @@ final class PullTest {
         status: TestStatus = .planned,
         notes: String? = nil
     ) {
-        self.legacyTestID = legacyTestID
+        self.testID = testID
         self.product = product
         self.location = location
         self.installedDate = installedDate
@@ -80,7 +80,7 @@ final class PullTest {
         self.notes = notes
     }
 
-    func syncFailureFieldsFromLegacyIfNeeded() {
+    func syncFailureFieldsFromModeIfNeeded() {
         guard failureFamily == nil, failureMechanism == nil, failureBehavior == nil, let failureMode else { return }
 
         switch failureMode {

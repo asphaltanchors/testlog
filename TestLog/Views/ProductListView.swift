@@ -46,7 +46,7 @@ struct ProductDetailView: View {
                         ($0.testedDate ?? .distantPast) > ($1.testedDate ?? .distantPast)
                     }), id: \.persistentModelID) { test in
                         HStack {
-                            Text(test.legacyTestID ?? "—")
+                            Text(test.testID ?? "—")
                             Spacer()
                             StatusBadge(status: test.status)
                         }

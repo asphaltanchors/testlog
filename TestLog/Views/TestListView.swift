@@ -16,7 +16,7 @@ struct TestRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(test.legacyTestID ?? "New Test")
+                Text(test.testID ?? "New Test")
                     .font(.headline)
                 Spacer()
                 StatusBadge(status: test.status)

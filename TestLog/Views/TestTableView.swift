@@ -18,6 +18,9 @@ struct TestTableView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allTests: [PullTest]
     @State private var searchText = ""
+#if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+#endif
 
     private var filteredTests: [PullTest] {
         let base = tests
@@ -118,17 +121,37 @@ struct TestTableView: View {
 
     #if os(iOS)
     private var iosList: some View {
-        List(selection: $selectedTestIDs) {
-            ForEach(filteredTests, id: \.persistentModelID) { test in
-                TestRowView(test: test)
-                    .tag(test.persistentModelID)
-                    .contextMenu {
-                        Button("Delete", role: .destructive) {
-                            deleteTest(test)
+        Group {
+            if horizontalSizeClass == .compact {
+                List {
+                    ForEach(filteredTests, id: \.persistentModelID) { test in
+                        NavigationLink {
+                            TestDetailView(test: test)
+                        } label: {
+                            TestRowView(test: test)
+                        }
+                        .contextMenu {
+                            Button("Delete", role: .destructive) {
+                                deleteTest(test)
+                            }
                         }
                     }
+                    .onDelete(perform: deleteTests)
+                }
+            } else {
+                List(selection: $selectedTestIDs) {
+                    ForEach(filteredTests, id: \.persistentModelID) { test in
+                        TestRowView(test: test)
+                            .tag(test.persistentModelID)
+                            .contextMenu {
+                                Button("Delete", role: .destructive) {
+                                    deleteTest(test)
+                                }
+                            }
+                    }
+                    .onDelete(perform: deleteTests)
+                }
             }
-            .onDelete(perform: deleteTests)
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {

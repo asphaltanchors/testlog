@@ -35,6 +35,8 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showingSessionEditor: TestSession?
     @State private var showingProductEditor: Product?
+    @State private var pendingSessionDeletion: TestSession?
+    @State private var pendingProductDeletion: Product?
 
     private var selectedTests: [PullTest] {
         allTests.filter { selectedTestIDs.contains($0.persistentModelID) }
@@ -70,6 +72,40 @@ struct ContentView: View {
             }
             .frame(minWidth: 400, minHeight: 300)
         }
+        .confirmationDialog(
+            "Delete this session?",
+            isPresented: sessionDeleteDialogBinding
+        ) {
+            Button("Delete", role: .destructive) {
+                deletePendingSession()
+            }
+            Button("Cancel", role: .cancel) {
+                pendingSessionDeletion = nil
+            }
+        } message: {
+            if let session = pendingSessionDeletion {
+                Text("This will delete the session and all \(session.tests.count) associated tests.")
+            }
+        }
+        .confirmationDialog(
+            "Delete this product?",
+            isPresented: productDeleteDialogBinding
+        ) {
+            Button("Delete", role: .destructive) {
+                deletePendingProduct()
+            }
+            Button("Cancel", role: .cancel) {
+                pendingProductDeletion = nil
+            }
+        } message: {
+            if let product = pendingProductDeletion {
+                Text("This will delete \(product.sku). Tests using this product will lose their product reference.")
+            }
+        }
+        .onChange(of: selectedSidebarItem) { _, _ in
+            // Keep detail pane in sync with the active middle-column dataset.
+            selectedTestIDs.removeAll()
+        }
     }
 
     // MARK: - Sidebar
@@ -101,10 +137,7 @@ struct ContentView: View {
                         }
                         Divider()
                         Button("Delete Session", role: .destructive) {
-                            if case .session(let id) = selectedSidebarItem, id == session.persistentModelID {
-                                selectedSidebarItem = .allTests
-                            }
-                            modelContext.delete(session)
+                            pendingSessionDeletion = session
                         }
                     }
                 }
@@ -196,10 +229,7 @@ struct ContentView: View {
             }
             Divider()
             Button("Delete Product", role: .destructive) {
-                if case .product(let id) = selectedSidebarItem, id == product.persistentModelID {
-                    selectedSidebarItem = .allTests
-                }
-                modelContext.delete(product)
+                pendingProductDeletion = product
             }
         }
     }
@@ -272,6 +302,38 @@ struct ContentView: View {
         case .invalid: "xmark.circle"
         case .partial: "exclamationmark.triangle"
         }
+    }
+
+    private var sessionDeleteDialogBinding: Binding<Bool> {
+        Binding(
+            get: { pendingSessionDeletion != nil },
+            set: { if !$0 { pendingSessionDeletion = nil } }
+        )
+    }
+
+    private var productDeleteDialogBinding: Binding<Bool> {
+        Binding(
+            get: { pendingProductDeletion != nil },
+            set: { if !$0 { pendingProductDeletion = nil } }
+        )
+    }
+
+    private func deletePendingSession() {
+        guard let session = pendingSessionDeletion else { return }
+        if case .session(let id) = selectedSidebarItem, id == session.persistentModelID {
+            selectedSidebarItem = .allTests
+        }
+        modelContext.delete(session)
+        pendingSessionDeletion = nil
+    }
+
+    private func deletePendingProduct() {
+        guard let product = pendingProductDeletion else { return }
+        if case .product(let id) = selectedSidebarItem, id == product.persistentModelID {
+            selectedSidebarItem = .allTests
+        }
+        modelContext.delete(product)
+        pendingProductDeletion = nil
     }
 }
 

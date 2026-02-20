@@ -19,7 +19,6 @@ struct BulkEditView: View {
     private var adhesiveProducts: [Product] {
         allProducts.filter { $0.category == .adhesive }
     }
-    @Query(sort: \TestSession.sessionDate, order: .reverse) private var sessions: [TestSession]
 
     var body: some View {
         Form {
@@ -71,23 +70,6 @@ struct BulkEditView: View {
                 .foregroundStyle(.secondary)
             }
 
-            Section("Set Session") {
-                currentValueSummary("Session", values: tests.map {
-                    $0.session?.sessionDate.formatted(.dateTime.month(.abbreviated).day().year()) ?? "None"
-                })
-                ForEach(sessions, id: \.persistentModelID) { session in
-                    Button {
-                        applyToAll { $0.session = session }
-                    } label: {
-                        Label(session.sessionDate.formatted(.dateTime.month(.abbreviated).day().year()), systemImage: "calendar")
-                    }
-                }
-                Button("Clear Session") {
-                    applyToAll { $0.session = nil }
-                }
-                .foregroundStyle(.secondary)
-            }
-
             Section("Set Anchor Material") {
                 currentValueSummary("Material", values: tests.map { $0.anchorMaterial?.rawValue ?? "None" })
                 bulkEnumButtons(AnchorMaterial.self) { test, value in test.anchorMaterial = value }
@@ -98,19 +80,24 @@ struct BulkEditView: View {
                 bulkEnumButtons(HoleDiameter.self) { test, value in test.holeDiameter = value }
             }
 
-            Section("Set Brushed") {
-                currentValueSummary("Brushed", values: tests.map { $0.brushed?.rawValue ?? "None" })
-                bulkEnumButtons(BrushedStatus.self) { test, value in test.brushed = value }
+            Section("Set Brush Size") {
+                currentValueSummary("Brush Size", values: tests.map { $0.brushSize?.rawValue ?? "None" })
+                bulkEnumButtons(BrushSize.self) { test, value in test.brushSize = value }
             }
 
-            Section("Set Mix Consistency") {
-                currentValueSummary("Mix", values: tests.map { $0.mixConsistency?.rawValue ?? "None" })
-                bulkEnumButtons(MixConsistency.self) { test, value in test.mixConsistency = value }
+            Section("Set Failure Family") {
+                currentValueSummary("Failure Family", values: tests.map { $0.failureFamily?.rawValue ?? "None" })
+                bulkEnumButtons(FailureFamily.self) { test, value in test.failureFamily = value }
             }
 
-            Section("Set Failure Mode") {
-                currentValueSummary("Failure", values: tests.map { $0.failureMode?.rawValue ?? "None" })
-                bulkEnumButtons(FailureMode.self) { test, value in test.failureMode = value }
+            Section("Set Failure Mechanism") {
+                currentValueSummary("Failure Mechanism", values: tests.map { $0.failureMechanism?.rawValue ?? "None" })
+                bulkEnumButtons(FailureMechanism.self) { test, value in test.failureMechanism = value }
+            }
+
+            Section("Set Failure Behavior") {
+                currentValueSummary("Failure Behavior", values: tests.map { $0.failureBehavior?.rawValue ?? "None" })
+                bulkEnumButtons(FailureBehavior.self) { test, value in test.failureBehavior = value }
             }
         }
         .navigationTitle("Bulk Edit")

@@ -12,7 +12,6 @@ struct TestTableView: View {
     let tests: [PullTest]
     @Binding var selectedTestIDs: Set<PersistentIdentifier>
     let title: String
-    var session: TestSession? = nil
     var product: Product? = nil
 
     @Environment(\.modelContext) private var modelContext
@@ -179,7 +178,6 @@ struct TestTableView: View {
             let testID = String(format: "T%03d", nextNumber)
             let test = PullTest(
                 legacyTestID: testID,
-                session: session,
                 product: product,
                 status: .planned
             )

@@ -8,7 +8,7 @@
 
 import SwiftUI
 
-// MARK: - Test Row (for iOS list / session detail)
+// MARK: - Test Row (for iOS list / detail pane)
 
 struct TestRowView: View {
     let test: PullTest

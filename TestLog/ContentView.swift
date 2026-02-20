@@ -14,14 +14,12 @@ enum SidebarItem: Hashable {
     case allTests
     case allProducts
     case productCategory(ProductCategory)
-    case session(PersistentIdentifier)
     case product(PersistentIdentifier)
     case status(TestStatus)
 }
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \TestSession.sessionDate, order: .reverse) private var sessions: [TestSession]
     @Query(sort: \Product.sku) private var allProducts: [Product]
 
     @Query private var allTests: [PullTest]
@@ -38,9 +36,7 @@ struct ContentView: View {
     @State private var selectedTestIDs: Set<PersistentIdentifier> = []
     @State private var selectedProductIDs: Set<PersistentIdentifier> = []
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var showingSessionEditor: TestSession?
     @State private var showingProductEditor: Product?
-    @State private var pendingSessionDeletion: TestSession?
     @State private var pendingProductDeletion: Product?
     @State private var isAnchorsExpanded = true
     @State private var isAdhesivesExpanded = true
@@ -57,17 +53,6 @@ struct ContentView: View {
         } detail: {
             detailView
         }
-        .sheet(item: $showingSessionEditor) { session in
-            NavigationStack {
-                SessionDetailView(session: session)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showingSessionEditor = nil }
-                        }
-                    }
-            }
-            .frame(minWidth: 400, minHeight: 300)
-        }
         .sheet(item: $showingProductEditor) { product in
             NavigationStack {
                 ProductDetailView(product: product)
@@ -78,21 +63,6 @@ struct ContentView: View {
                     }
             }
             .frame(minWidth: 400, minHeight: 300)
-        }
-        .confirmationDialog(
-            "Delete this session?",
-            isPresented: sessionDeleteDialogBinding
-        ) {
-            Button("Delete", role: .destructive) {
-                deletePendingSession()
-            }
-            Button("Cancel", role: .cancel) {
-                pendingSessionDeletion = nil
-            }
-        } message: {
-            if let session = pendingSessionDeletion {
-                Text("This will delete the session and all \(session.tests.count) associated tests.")
-            }
         }
         .confirmationDialog(
             "Delete this product?",
@@ -130,35 +100,6 @@ struct ContentView: View {
                     let count = allTests.filter { $0.status == status }.count
                     sidebarRow(status.rawValue, icon: iconForStatus(status), tag: .status(status), badge: count)
                 }
-            }
-
-            Section("Sessions") {
-                ForEach(sessions, id: \.persistentModelID) { session in
-                    sidebarRow(
-                        session.sessionDate.formatted(.dateTime.month(.abbreviated).day().year()),
-                        icon: "calendar",
-                        tag: .session(session.persistentModelID),
-                        badge: session.tests.count
-                    )
-                    .contextMenu {
-                        Button("Edit Session...") {
-                            showingSessionEditor = session
-                        }
-                        Divider()
-                        Button("Delete Session", role: .destructive) {
-                            pendingSessionDeletion = session
-                        }
-                    }
-                }
-
-                Button {
-                    let session = TestSession(sessionDate: Date())
-                    modelContext.insert(session)
-                    selectedSidebarItem = .session(session.persistentModelID)
-                } label: {
-                    Label("New Session", systemImage: "plus.circle")
-                }
-                .buttonStyle(.borderless)
             }
 
             Section("Products") {
@@ -279,17 +220,6 @@ struct ContentView: View {
                 selectedTestIDs: $selectedTestIDs,
                 title: status.rawValue
             )
-        case .session(let sessionID):
-            if let session = sessions.first(where: { $0.persistentModelID == sessionID }) {
-                TestTableView(
-                    tests: session.tests,
-                    selectedTestIDs: $selectedTestIDs,
-                    title: session.sessionDate.formatted(.dateTime.month(.wide).day().year()),
-                    session: session
-                )
-            } else {
-                ContentUnavailableView("Session Not Found", systemImage: "calendar")
-            }
         case .product(let productID):
             if let product = allProducts.first(where: { $0.persistentModelID == productID }) {
                 let relatedTests = Array(Set(product.tests + product.adhesiveTests))
@@ -342,27 +272,11 @@ struct ContentView: View {
         }
     }
 
-    private var sessionDeleteDialogBinding: Binding<Bool> {
-        Binding(
-            get: { pendingSessionDeletion != nil },
-            set: { if !$0 { pendingSessionDeletion = nil } }
-        )
-    }
-
     private var productDeleteDialogBinding: Binding<Bool> {
         Binding(
             get: { pendingProductDeletion != nil },
             set: { if !$0 { pendingProductDeletion = nil } }
         )
-    }
-
-    private func deletePendingSession() {
-        guard let session = pendingSessionDeletion else { return }
-        if case .session(let id) = selectedSidebarItem, id == session.persistentModelID {
-            selectedSidebarItem = .allTests
-        }
-        modelContext.delete(session)
-        pendingSessionDeletion = nil
     }
 
     private func deletePendingProduct() {
@@ -402,5 +316,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: [PullTest.self, Product.self, TestSession.self], inMemory: true)
+        .modelContainer(for: [PullTest.self, Product.self], inMemory: true)
 }

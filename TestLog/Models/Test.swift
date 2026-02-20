@@ -11,7 +11,6 @@ import SwiftData
 @Model
 final class PullTest {
     var legacyTestID: String?
-    var session: TestSession?
     var product: Product?
     var location: Location?
     var installedDate: Date?
@@ -21,10 +20,12 @@ final class PullTest {
     var holeDiameter: HoleDiameter?
     var cureDays: Int?
     var pavementTemp: Int?
-    var brushed: BrushedStatus?
+    var brushSize: BrushSize?
     var testType: TestType?
+    var failureFamily: FailureFamily?
+    var failureMechanism: FailureMechanism?
+    var failureBehavior: FailureBehavior?
     var failureMode: FailureMode?
-    var mixConsistency: MixConsistency?
     var status: TestStatus
     var notes: String?
 
@@ -41,7 +42,6 @@ final class PullTest {
 
     init(
         legacyTestID: String? = nil,
-        session: TestSession? = nil,
         product: Product? = nil,
         location: Location? = nil,
         installedDate: Date? = nil,
@@ -51,15 +51,16 @@ final class PullTest {
         holeDiameter: HoleDiameter? = nil,
         cureDays: Int? = nil,
         pavementTemp: Int? = nil,
-        brushed: BrushedStatus? = nil,
+        brushSize: BrushSize? = .oversized,
         testType: TestType? = .pull,
+        failureFamily: FailureFamily? = nil,
+        failureMechanism: FailureMechanism? = nil,
+        failureBehavior: FailureBehavior? = nil,
         failureMode: FailureMode? = nil,
-        mixConsistency: MixConsistency? = nil,
         status: TestStatus = .planned,
         notes: String? = nil
     ) {
         self.legacyTestID = legacyTestID
-        self.session = session
         self.product = product
         self.location = location
         self.installedDate = installedDate
@@ -69,11 +70,55 @@ final class PullTest {
         self.holeDiameter = holeDiameter
         self.cureDays = cureDays
         self.pavementTemp = pavementTemp
-        self.brushed = brushed
+        self.brushSize = brushSize
         self.testType = testType
+        self.failureFamily = failureFamily
+        self.failureMechanism = failureMechanism
+        self.failureBehavior = failureBehavior
         self.failureMode = failureMode
-        self.mixConsistency = mixConsistency
         self.status = status
         self.notes = notes
+    }
+
+    func syncFailureFieldsFromLegacyIfNeeded() {
+        guard failureFamily == nil, failureMechanism == nil, failureBehavior == nil, let failureMode else { return }
+
+        switch failureMode {
+        case .cleanPull:
+            failureFamily = .bondPullout
+            failureMechanism = .progressivePullout
+            failureBehavior = .progressive
+        case .snappedHead:
+            failureFamily = .anchorStructural
+            failureMechanism = .headWasherInterface
+            failureBehavior = .catastrophic
+        case .headPoppedOff:
+            failureFamily = .anchorStructural
+            failureMechanism = .shankMaterialFracture
+            failureBehavior = .catastrophic
+        case .partial:
+            failureFamily = .other
+        }
+    }
+
+    func normalizeFailureSelections() {
+        let families = FailureFamily.options(for: testType)
+        if let failureFamily, !families.contains(failureFamily) {
+            self.failureFamily = nil
+        }
+
+        let mechanisms = FailureMechanism.options(for: testType, family: failureFamily)
+        if mechanisms.count == 1 {
+            self.failureMechanism = mechanisms.first
+        } else if let failureMechanism, !mechanisms.contains(failureMechanism) {
+            self.failureMechanism = nil
+        }
+
+        let behaviors = FailureBehavior.options(for: failureFamily)
+        if behaviors.count == 1 {
+            self.failureBehavior = behaviors.first
+        } else if let failureBehavior, !behaviors.contains(failureBehavior) {
+            self.failureBehavior = nil
+        }
     }
 }

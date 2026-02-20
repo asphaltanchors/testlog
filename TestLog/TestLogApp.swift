@@ -13,7 +13,6 @@ struct TestLogApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Product.self,
-            TestSession.self,
             PullTest.self,
             TestMeasurement.self,
             Location.self,

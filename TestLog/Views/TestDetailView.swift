@@ -20,7 +20,15 @@ struct TestDetailView: View {
     private var adhesiveProducts: [Product] {
         allProducts.filter { $0.category == .adhesive }
     }
-    @Query(sort: \TestSession.sessionDate, order: .reverse) private var sessions: [TestSession]
+    private var failureMechanismOptions: [FailureMechanism] {
+        FailureMechanism.options(for: test.testType, family: test.failureFamily)
+    }
+    private var failureBehaviorOptions: [FailureBehavior] {
+        FailureBehavior.options(for: test.failureFamily)
+    }
+    private var failureFamilyOptions: [FailureFamily] {
+        FailureFamily.options(for: test.testType)
+    }
     @State private var showingDeleteConfirmation = false
 
     var body: some View {
@@ -38,16 +46,8 @@ struct TestDetailView: View {
                 }
             }
 
-            // MARK: - Session & Product
-            Section("Session & Product") {
-                Picker("Session", selection: $test.session) {
-                    Text("None").tag(nil as TestSession?)
-                    ForEach(sessions, id: \.persistentModelID) { session in
-                        Text(session.sessionDate, format: .dateTime.month().day().year())
-                            .tag(session as TestSession?)
-                    }
-                }
-
+            // MARK: - Product
+            Section("Product") {
                 Picker("Anchor", selection: $test.product) {
                     Text("None").tag(nil as Product?)
                     ForEach(anchorProducts, id: \.persistentModelID) { product in
@@ -69,8 +69,7 @@ struct TestDetailView: View {
             Section("Installation Parameters") {
                 OptionalEnumPicker("Anchor Material", selection: $test.anchorMaterial)
                 OptionalEnumPicker("Hole Diameter", selection: $test.holeDiameter)
-                OptionalEnumPicker("Brushed", selection: $test.brushed)
-                OptionalEnumPicker("Mix Consistency", selection: $test.mixConsistency)
+                OptionalEnumPicker("Brush Size", selection: $test.brushSize)
             }
 
             // MARK: - Dates & Conditions
@@ -108,7 +107,21 @@ struct TestDetailView: View {
             // MARK: - Results
             Section("Results") {
                 OptionalEnumPicker("Test Type", selection: $test.testType)
-                OptionalEnumPicker("Failure Mode", selection: $test.failureMode)
+                OptionalEnumPicker(
+                    "Failure Family",
+                    selection: $test.failureFamily,
+                    options: failureFamilyOptions
+                )
+                OptionalEnumPicker(
+                    "Failure Mechanism",
+                    selection: $test.failureMechanism,
+                    options: failureMechanismOptions
+                )
+                OptionalEnumPicker(
+                    "Failure Behavior",
+                    selection: $test.failureBehavior,
+                    options: failureBehaviorOptions
+                )
             }
 
             // MARK: - Measurements
@@ -138,6 +151,16 @@ struct TestDetailView: View {
             }
         }
         .navigationTitle(test.legacyTestID ?? "New Test")
+        .onAppear {
+            test.syncFailureFieldsFromLegacyIfNeeded()
+            test.normalizeFailureSelections()
+        }
+        .onChange(of: test.testType) { _, _ in
+            test.normalizeFailureSelections()
+        }
+        .onChange(of: test.failureFamily) { _, _ in
+            test.normalizeFailureSelections()
+        }
         #if os(macOS)
         .formStyle(.grouped)
         #endif
@@ -193,16 +216,18 @@ struct OptionalEnumPicker<E: RawRepresentable & CaseIterable & Identifiable & Ha
 {
     let title: String
     @Binding var selection: E?
+    let options: [E]
 
-    init(_ title: String, selection: Binding<E?>) {
+    init(_ title: String, selection: Binding<E?>, options: [E] = Array(E.allCases)) {
         self.title = title
         self._selection = selection
+        self.options = options
     }
 
     var body: some View {
         Picker(title, selection: $selection) {
             Text("—").tag(nil as E?)
-            ForEach(E.allCases) { value in
+            ForEach(options) { value in
                 Text(value.rawValue).tag(value as E?)
             }
         }

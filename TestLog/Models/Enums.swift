@@ -28,20 +28,56 @@ enum AnchorMaterial: String, Codable, CaseIterable, Identifiable {
 // MARK: - Hole Diameter
 
 enum HoleDiameter: String, Codable, CaseIterable, Identifiable {
+    case threeQuarters = "3/4\""
     case sevenEighths = "7/8\""
-    case oneAndOneEighth = "1.125\""
-    case oneAndOneQuarter = "1.25\""
-    case oneAndOneHalf = "1.5\""
+    case one = "1\""
+    case oneAndOneEighth = "1 - 1/8\""
+    case oneAndOneQuarter = "1 - 1/4\""
+    case oneAndThreeEighths = "1 - 3/8\""
+    case oneAndOneHalf = "1 - 1/2\""
 
     var id: String { rawValue }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+
+        if let parsed = HoleDiameter(rawValue: value) {
+            self = parsed
+            return
+        }
+
+        // Backward compatibility for previously stored decimal-style values.
+        switch value {
+        case "1.125\"":
+            self = .oneAndOneEighth
+        case "1.25\"":
+            self = .oneAndOneQuarter
+        case "1.375\"":
+            self = .oneAndThreeEighths
+        case "1.5\"":
+            self = .oneAndOneHalf
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid hole diameter: \(value)"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
-// MARK: - Brushed Status
+// MARK: - Brush Size
 
-enum BrushedStatus: String, Codable, CaseIterable, Identifiable {
-    case yes = "Y"
-    case no = "N"
-    case partial = "Partial"
+enum BrushSize: String, Codable, CaseIterable, Identifiable {
+    case none = "None"
+    case undersized = "Undersized"
+    case matched = "Matched"
+    case oversized = "Oversized"
 
     var id: String { rawValue }
 }
@@ -50,12 +86,14 @@ enum BrushedStatus: String, Codable, CaseIterable, Identifiable {
 
 enum TestType: String, Codable, CaseIterable, Identifiable {
     case pull = "Pull"
+    case shear = "Shear"
 
     var id: String { rawValue }
 }
 
 // MARK: - Failure Mode
 
+// Legacy single-field failure mode kept for backward compatibility with existing stores.
 enum FailureMode: String, Codable, CaseIterable, Identifiable {
     case cleanPull = "Clean Pull"
     case snappedHead = "Snapped Head"
@@ -65,15 +103,79 @@ enum FailureMode: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-// MARK: - Mix Consistency
+// MARK: - Failure Family
 
-enum MixConsistency: String, Codable, CaseIterable, Identifiable {
-    case thin = "Thin"
-    case standard = "Standard"
-    case thick = "Thick"
-    case wateredDown = "Watered Down"
+enum FailureFamily: String, Codable, CaseIterable, Identifiable {
+    case anchorStructural = "Anchor Structural Failure"
+    case bondPullout = "Bond Pullout"
+    case equipmentFailure = "Equipment Failure"
+    case other = "Other"
 
     var id: String { rawValue }
+
+    static func options(for testType: TestType?) -> [FailureFamily] {
+        switch testType {
+        case .shear:
+            return [.anchorStructural, .bondPullout, .equipmentFailure, .other]
+        case .pull, nil:
+            return [.anchorStructural, .bondPullout, .other]
+        }
+    }
+}
+
+// MARK: - Failure Mechanism
+
+enum FailureMechanism: String, Codable, CaseIterable, Identifiable {
+    case headWasherInterface = "Head/Washer Interface Failure"
+    case shankMaterialFracture = "Shank Material Fracture"
+    case progressivePullout = "Progressive Pullout"
+    case fixtureFailure = "Fixture Failure"
+    case loadCellIssue = "Load Cell Issue"
+    case otherEquipment = "Other Equipment Failure"
+
+    var id: String { rawValue }
+
+    static func options(for testType: TestType?, family: FailureFamily?) -> [FailureMechanism] {
+        guard let family else { return [] }
+
+        switch family {
+        case .anchorStructural:
+            return [.headWasherInterface, .shankMaterialFracture]
+        case .bondPullout:
+            return [.progressivePullout]
+        case .equipmentFailure:
+            if testType == .shear {
+                return [.fixtureFailure, .loadCellIssue, .otherEquipment]
+            }
+            return []
+        case .other:
+            return []
+        }
+    }
+}
+
+// MARK: - Failure Behavior
+
+enum FailureBehavior: String, Codable, CaseIterable, Identifiable {
+    case catastrophic = "Catastrophic"
+    case progressive = "Progressive"
+
+    var id: String { rawValue }
+
+    static func options(for family: FailureFamily?) -> [FailureBehavior] {
+        switch family {
+        case .anchorStructural:
+            return [.catastrophic]
+        case .bondPullout:
+            return [.progressive]
+        case .equipmentFailure:
+            return [.catastrophic, .progressive]
+        case .other:
+            return [.catastrophic, .progressive]
+        case nil:
+            return []
+        }
+    }
 }
 
 // MARK: - Test Status

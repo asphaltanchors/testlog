@@ -18,6 +18,9 @@ struct TestTableView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allTests: [PullTest]
     @State private var searchText = ""
+    @State private var sortOrder: [KeyPathComparator<PullTest>] = [
+        KeyPathComparator(\PullTest.sortLegacyTestID, comparator: .localizedStandard)
+    ]
 #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 #endif
@@ -32,6 +35,10 @@ struct TestTableView: View {
             (test.adhesive?.sku.lowercased().contains(text) ?? false) ||
             (test.notes?.lowercased().contains(text) ?? false)
         }
+    }
+
+    private var sortedFilteredTests: [PullTest] {
+        filteredTests.sorted(using: sortOrder)
     }
 
     var body: some View {
@@ -57,45 +64,45 @@ struct TestTableView: View {
 
     #if os(macOS)
     private var macTable: some View {
-        Table(of: PullTest.self, selection: $selectedTestIDs) {
-            TableColumn("ID") { test in
+        Table(of: PullTest.self, selection: $selectedTestIDs, sortOrder: $sortOrder) {
+            TableColumn("ID", value: \.sortLegacyTestID) { test in
                 Text(test.legacyTestID ?? "—")
                     .fontWeight(.medium)
             }
             .width(min: 50, ideal: 65)
 
-            TableColumn("Status") { test in
+            TableColumn("Status", value: \.sortStatus) { test in
                 StatusBadge(status: test.status)
             }
             .width(min: 75, ideal: 85)
 
-            TableColumn("Product") { test in
+            TableColumn("Product", value: \.sortProductSKU) { test in
                 Text(test.product?.sku ?? "—")
             }
             .width(min: 50, ideal: 60)
 
-            TableColumn("Adhesive") { test in
+            TableColumn("Adhesive", value: \.sortAdhesiveSKU) { test in
                 Text(test.adhesive?.sku ?? "—")
             }
             .width(min: 65, ideal: 80)
 
-            TableColumn("Hole") { test in
+            TableColumn("Hole", value: \.sortHoleDiameter) { test in
                 Text(test.holeDiameter?.rawValue ?? "—")
             }
             .width(min: 50, ideal: 60)
 
-            TableColumn("Peak (lbs)") { test in
+            TableColumn("Peak (lbs)", value: \.sortPeakForce) { test in
                 Text(peakForce(for: test))
                     .monospacedDigit()
             }
             .width(min: 65, ideal: 75)
 
-            TableColumn("Tested") { test in
+            TableColumn("Tested", value: \.sortTestedDate) { test in
                 Text(testedDateText(for: test))
             }
             .width(min: 65, ideal: 80)
         } rows: {
-            ForEach(filteredTests, id: \.persistentModelID) { test in
+            ForEach(sortedFilteredTests, id: \.persistentModelID) { test in
                 TableRow(test)
                     .contextMenu {
                         Button("Delete", role: .destructive) {
@@ -195,4 +202,14 @@ struct TestTableView: View {
             }
         }
     }
+}
+
+private extension PullTest {
+    var sortLegacyTestID: String { legacyTestID ?? "" }
+    var sortStatus: String { status.rawValue }
+    var sortProductSKU: String { product?.sku ?? "" }
+    var sortAdhesiveSKU: String { adhesive?.sku ?? "" }
+    var sortHoleDiameter: String { holeDiameter?.rawValue ?? "" }
+    var sortPeakForce: Double { measurements.compactMap(\.force).max() ?? 0 }
+    var sortTestedDate: Date { testedDate ?? .distantPast }
 }

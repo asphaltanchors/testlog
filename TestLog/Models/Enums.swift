@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - Product Category
 
-enum ProductCategory: String, Codable, CaseIterable, Identifiable {
+enum ProductCategory: String, Codable, CaseIterable, Identifiable, Hashable {
     case anchor = "Anchor"
     case adhesive = "Adhesive"
 

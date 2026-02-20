@@ -12,6 +12,8 @@ import SwiftData
 
 enum SidebarItem: Hashable {
     case allTests
+    case allProducts
+    case productCategory(ProductCategory)
     case session(PersistentIdentifier)
     case product(PersistentIdentifier)
     case status(TestStatus)
@@ -22,21 +24,26 @@ struct ContentView: View {
     @Query(sort: \TestSession.sessionDate, order: .reverse) private var sessions: [TestSession]
     @Query(sort: \Product.sku) private var allProducts: [Product]
 
+    @Query private var allTests: [PullTest]
+
     private var anchorProducts: [Product] {
         allProducts.filter { $0.category == .anchor }
     }
+
     private var adhesiveProducts: [Product] {
         allProducts.filter { $0.category == .adhesive }
     }
-    @Query private var allTests: [PullTest]
 
     @State private var selectedSidebarItem: SidebarItem? = .allTests
     @State private var selectedTestIDs: Set<PersistentIdentifier> = []
+    @State private var selectedProductIDs: Set<PersistentIdentifier> = []
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showingSessionEditor: TestSession?
     @State private var showingProductEditor: Product?
     @State private var pendingSessionDeletion: TestSession?
     @State private var pendingProductDeletion: Product?
+    @State private var isAnchorsExpanded = true
+    @State private var isAdhesivesExpanded = true
 
     private var selectedTests: [PullTest] {
         allTests.filter { selectedTestIDs.contains($0.persistentModelID) }
@@ -105,6 +112,7 @@ struct ContentView: View {
         .onChange(of: selectedSidebarItem) { _, _ in
             // Keep detail pane in sync with the active middle-column dataset.
             selectedTestIDs.removeAll()
+            selectedProductIDs.removeAll()
         }
     }
 
@@ -114,6 +122,7 @@ struct ContentView: View {
         List(selection: $selectedSidebarItem) {
             Section("Library") {
                 sidebarRow("All Tests", icon: "flask", tag: .allTests, badge: allTests.count)
+                sidebarRow("All Products", icon: "shippingbox", tag: .allProducts, badge: allProducts.count)
             }
 
             Section("Status") {
@@ -152,34 +161,29 @@ struct ContentView: View {
                 .buttonStyle(.borderless)
             }
 
-            Section("Anchors") {
-                ForEach(anchorProducts, id: \.persistentModelID) { product in
-                    productSidebarRow(product)
+            Section("Products") {
+                DisclosureGroup(isExpanded: $isAnchorsExpanded) {
+                    ForEach(anchorProducts, id: \.persistentModelID) { product in
+                        productSidebarRow(product)
+                    }
+                } label: {
+                    Label("Anchors", systemImage: "folder")
                 }
+                .tag(SidebarItem.productCategory(.anchor))
+
+                DisclosureGroup(isExpanded: $isAdhesivesExpanded) {
+                    ForEach(adhesiveProducts, id: \.persistentModelID) { product in
+                        productSidebarRow(product)
+                    }
+                } label: {
+                    Label("Adhesives", systemImage: "folder")
+                }
+                .tag(SidebarItem.productCategory(.adhesive))
 
                 Button {
-                    let product = Product(sku: "NEW", displayName: "New Anchor", category: .anchor)
-                    modelContext.insert(product)
-                    selectedSidebarItem = .product(product.persistentModelID)
-                    showingProductEditor = product
+                    createProductAndOpenEditor()
                 } label: {
-                    Label("New Anchor", systemImage: "plus.circle")
-                }
-                .buttonStyle(.borderless)
-            }
-
-            Section("Adhesives") {
-                ForEach(adhesiveProducts, id: \.persistentModelID) { product in
-                    productSidebarRow(product)
-                }
-
-                Button {
-                    let product = Product(sku: "NEW", displayName: "New Adhesive", category: .adhesive)
-                    modelContext.insert(product)
-                    selectedSidebarItem = .product(product.persistentModelID)
-                    showingProductEditor = product
-                } label: {
-                    Label("New Adhesive", systemImage: "plus.circle")
+                    Label("New Product", systemImage: "plus.circle")
                 }
                 .buttonStyle(.borderless)
             }
@@ -245,6 +249,30 @@ struct ContentView: View {
                 selectedTestIDs: $selectedTestIDs,
                 title: "All Tests"
             )
+        case .allProducts:
+            ProductTableView(
+                products: allProducts,
+                selectedProductIDs: $selectedProductIDs,
+                title: "All Products",
+                onAddProduct: {
+                    createProductAndOpenEditor(
+                        preferredCategory: .anchor,
+                        destination: .allProducts
+                    )
+                }
+            )
+        case .productCategory(let category):
+            ProductTableView(
+                products: allProducts.filter { $0.category == category },
+                selectedProductIDs: $selectedProductIDs,
+                title: category == .anchor ? "Anchor Products" : "Adhesive Products",
+                onAddProduct: {
+                    createProductAndOpenEditor(
+                        preferredCategory: category,
+                        destination: .productCategory(category)
+                    )
+                }
+            )
         case .status(let status):
             TestTableView(
                 tests: allTests.filter { $0.status == status },
@@ -282,13 +310,23 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detailView: some View {
-        let selected = selectedTests
-        if selected.count > 1 {
-            BulkEditView(tests: selected)
-        } else if let test = selected.first {
-            TestDetailView(test: test)
-        } else {
-            ContentUnavailableView("Select a Test", systemImage: "flask", description: Text("Choose a test to view its details."))
+        switch selectedSidebarItem {
+        case .allProducts, .productCategory(_):
+            let selectedProducts = allProducts.filter { selectedProductIDs.contains($0.persistentModelID) }
+            if let product = selectedProducts.first, selectedProducts.count == 1 {
+                ProductDetailView(product: product)
+            } else {
+                ContentUnavailableView("Select a Product", systemImage: "shippingbox", description: Text("Choose a product to view its details."))
+            }
+        default:
+            let selected = selectedTests
+            if selected.count > 1 {
+                BulkEditView(tests: selected)
+            } else if let test = selected.first {
+                TestDetailView(test: test)
+            } else {
+                ContentUnavailableView("Select a Test", systemImage: "flask", description: Text("Choose a test to view its details."))
+            }
         }
     }
 
@@ -332,8 +370,33 @@ struct ContentView: View {
         if case .product(let id) = selectedSidebarItem, id == product.persistentModelID {
             selectedSidebarItem = .allTests
         }
+        selectedProductIDs.remove(product.persistentModelID)
         modelContext.delete(product)
         pendingProductDeletion = nil
+    }
+
+    private func createProductAndOpenEditor(
+        preferredCategory: ProductCategory = .anchor,
+        destination: SidebarItem = .allProducts
+    ) {
+        let product = Product(
+            sku: nextDraftProductSKU(),
+            displayName: "New Product",
+            category: preferredCategory
+        )
+        modelContext.insert(product)
+        selectedSidebarItem = destination
+        selectedProductIDs = [product.persistentModelID]
+        showingProductEditor = product
+    }
+
+    private func nextDraftProductSKU() -> String {
+        let draftNumbers = allProducts.compactMap { product -> Int? in
+            guard product.sku.hasPrefix("NEW-") else { return nil }
+            return Int(product.sku.dropFirst(4))
+        }
+        let nextNumber = (draftNumbers.max() ?? 0) + 1
+        return String(format: "NEW-%03d", nextNumber)
     }
 }
 

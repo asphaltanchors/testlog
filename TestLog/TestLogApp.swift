@@ -12,9 +12,14 @@ import SwiftData
 struct TestLogApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Product.self,
+            TestSession.self,
+            PullTest.self,
+            TestMeasurement.self,
+            Location.self,
+            Asset.self,
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let modelConfiguration = ModelConfiguration("TestLog", schema: schema, isStoredInMemoryOnly: false)
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])

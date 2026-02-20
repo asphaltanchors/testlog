@@ -27,7 +27,6 @@ final class PullTest {
     var failureMechanism: FailureMechanism?
     var failureBehavior: FailureBehavior?
     var failureMode: FailureMode?
-    var status: TestStatus
     var notes: String?
 
     @Relationship(deleteRule: .cascade)
@@ -39,6 +38,26 @@ final class PullTest {
     var computedCureDays: Int? {
         guard let installed = installedDate, let tested = testedDate else { return nil }
         return Calendar.current.dateComponents([.day], from: installed, to: tested).day
+    }
+
+    var status: TestStatus {
+        computedStatus()
+    }
+
+    func computedStatus(referenceDate: Date = .now) -> TestStatus {
+        if testedDate != nil {
+            return .completed
+        }
+
+        guard let installedDate else {
+            return .planned
+        }
+
+        if installedDate > referenceDate {
+            return .planned
+        }
+
+        return .installed
     }
 
     init(
@@ -59,7 +78,6 @@ final class PullTest {
         failureMechanism: FailureMechanism? = nil,
         failureBehavior: FailureBehavior? = nil,
         failureMode: FailureMode? = nil,
-        status: TestStatus = .planned,
         notes: String? = nil
     ) {
         self.testID = testID
@@ -79,7 +97,6 @@ final class PullTest {
         self.failureMechanism = failureMechanism
         self.failureBehavior = failureBehavior
         self.failureMode = failureMode
-        self.status = status
         self.notes = notes
     }
 

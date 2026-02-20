@@ -67,8 +67,6 @@ struct StatusBadge: View {
         case .planned: .blue
         case .installed: .orange
         case .completed: .green
-        case .invalid: .red
-        case .partial: .yellow
         }
     }
 

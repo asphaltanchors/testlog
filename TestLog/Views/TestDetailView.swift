@@ -42,17 +42,12 @@ struct TestDetailView: View {
 
     var body: some View {
         Form {
-            // MARK: - Identity & Status
-            Section("Identity & Status") {
+            // MARK: - Identity
+            Section("Identity") {
                 TextField("Test ID", text: Binding(
                     get: { test.testID ?? "" },
                     set: { test.testID = $0.isEmpty ? nil : $0 }
                 ))
-                Picker("Status", selection: $test.status) {
-                    ForEach(TestStatus.allCases) { status in
-                        Text(status.rawValue).tag(status)
-                    }
-                }
             }
 
             siteAndLocationSection

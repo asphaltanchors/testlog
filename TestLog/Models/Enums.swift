@@ -184,8 +184,6 @@ enum TestStatus: String, Codable, CaseIterable, Identifiable {
     case planned = "Planned"
     case installed = "Installed"
     case completed = "Completed"
-    case invalid = "Invalid"
-    case partial = "Partial"
 
     var id: String { rawValue }
 }

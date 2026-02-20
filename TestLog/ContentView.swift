@@ -339,8 +339,6 @@ struct ContentView: View {
         case .planned: "clock"
         case .installed: "wrench"
         case .completed: "checkmark.circle"
-        case .invalid: "xmark.circle"
-        case .partial: "exclamationmark.triangle"
         }
     }
 

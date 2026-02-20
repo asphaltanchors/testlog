@@ -107,6 +107,10 @@ struct TestTableView: View {
             ForEach(sortedFilteredTests, id: \.persistentModelID) { test in
                 TableRow(test)
                     .contextMenu {
+                        Button("Duplicate Test") {
+                            duplicateTest(test)
+                        }
+                        Divider()
                         Button("Delete", role: .destructive) {
                             deleteTest(test)
                         }
@@ -140,6 +144,10 @@ struct TestTableView: View {
                             TestRowView(test: test)
                         }
                         .contextMenu {
+                            Button("Duplicate Test") {
+                                duplicateTest(test)
+                            }
+                            Divider()
                             Button("Delete", role: .destructive) {
                                 deleteTest(test)
                             }
@@ -153,6 +161,10 @@ struct TestTableView: View {
                         TestRowView(test: test)
                             .tag(test.persistentModelID)
                             .contextMenu {
+                                Button("Duplicate Test") {
+                                    duplicateTest(test)
+                                }
+                                Divider()
                                 Button("Delete", role: .destructive) {
                                     deleteTest(test)
                                 }
@@ -174,19 +186,73 @@ struct TestTableView: View {
 
     private func addTest() {
         withAnimation {
-            let nextNumber = (allTests.compactMap { test in
-                guard let id = test.testID, id.hasPrefix("T") else { return nil }
-                return Int(id.dropFirst())
-            }.max() ?? 0) + 1
-            let testID = String(format: "T%03d", nextNumber)
+            let testID = nextTestID()
             let test = PullTest(
                 testID: testID,
                 product: product,
-                site: defaultSite(),
-                status: .planned
+                site: defaultSite()
             )
             modelContext.insert(test)
             selectedTestIDs = [test.persistentModelID]
+        }
+    }
+
+    private func duplicateTest(_ source: PullTest) {
+        withAnimation {
+            let duplicatedLocation = source.location.map { location in
+                Location(
+                    label: location.label,
+                    site: location.site ?? source.site,
+                    gridColumn: nil,
+                    gridRow: nil,
+                    notes: location.notes
+                )
+            }
+
+            let duplicate = PullTest(
+                testID: nextTestID(),
+                product: source.product,
+                site: source.site,
+                location: duplicatedLocation,
+                installedDate: source.installedDate,
+                testedDate: source.testedDate,
+                anchorMaterial: source.anchorMaterial,
+                adhesive: source.adhesive,
+                holeDiameter: source.holeDiameter,
+                cureDays: source.cureDays,
+                pavementTemp: source.pavementTemp,
+                brushSize: source.brushSize,
+                testType: source.testType,
+                failureFamily: source.failureFamily,
+                failureMechanism: source.failureMechanism,
+                failureBehavior: source.failureBehavior,
+                failureMode: source.failureMode,
+                notes: source.notes
+            )
+
+            duplicate.measurements = source.measurements.map { measurement in
+                TestMeasurement(
+                    label: measurement.label,
+                    force: measurement.force,
+                    displacement: measurement.displacement,
+                    timestamp: measurement.timestamp,
+                    isManual: measurement.isManual,
+                    sortOrder: measurement.sortOrder
+                )
+            }
+
+            duplicate.assets = source.assets.map { asset in
+                Asset(
+                    assetType: asset.assetType,
+                    filename: asset.filename,
+                    fileURL: asset.fileURL,
+                    createdAt: asset.createdAt,
+                    notes: asset.notes
+                )
+            }
+
+            modelContext.insert(duplicate)
+            selectedTestIDs = [duplicate.persistentModelID]
         }
     }
 
@@ -207,6 +273,14 @@ struct TestTableView: View {
 
     private func defaultSite() -> Site? {
         allSites.first(where: \.isPrimaryPad) ?? allSites.first
+    }
+
+    private func nextTestID() -> String {
+        let nextNumber = (allTests.compactMap { test in
+            guard let id = test.testID, id.hasPrefix("T") else { return nil }
+            return Int(id.dropFirst())
+        }.max() ?? 0) + 1
+        return String(format: "T%03d", nextNumber)
     }
 }
 

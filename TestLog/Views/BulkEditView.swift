@@ -27,19 +27,6 @@ struct BulkEditView: View {
                     .font(.headline)
             }
 
-            Section("Set Status") {
-                HStack {
-                    ForEach(TestStatus.allCases) { status in
-                        Button {
-                            applyToAll { $0.status = status }
-                        } label: {
-                            StatusBadge(status: status)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
             Section("Set Anchor") {
                 currentValueSummary("Anchor", values: tests.map { $0.product?.name ?? "None" })
                 ForEach(anchorProducts, id: \.persistentModelID) { product in

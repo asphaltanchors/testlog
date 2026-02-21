@@ -15,7 +15,6 @@ struct VideoWorkspaceView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    @State private var layoutMode: LayoutMode = .sideBySide
     @State private var isRunningAutoSync = false
     @State private var isExportingVideo = false
     @State private var isPlayingSynced = false
@@ -32,13 +31,6 @@ struct VideoWorkspaceView: View {
     private let syncService: VideoSyncing = DefaultVideoSyncService()
     private let exportService: VideoExporting = DefaultVideoExportService()
     private let testerDataParser: TesterDataParsing = LBYTesterDataParser()
-
-    enum LayoutMode: String, CaseIterable, Identifiable {
-        case sideBySide = "Side by Side"
-        case pip = "PiP"
-
-        var id: String { rawValue }
-    }
 
     private var syncConfiguration: VideoSyncConfiguration {
         if let existing = test.videoSyncConfiguration {
@@ -155,9 +147,7 @@ struct VideoWorkspaceView: View {
                 GroupBox("Workspace Controls") {
                     VStack(alignment: .leading, spacing: 12) {
                         roleSelectors
-                        trimControls
                         alignmentControls
-                        playbackControls
                         actionRow
                     }
                 }
@@ -224,13 +214,6 @@ struct VideoWorkspaceView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Picker("Layout", selection: $layoutMode) {
-                ForEach(LayoutMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 240)
             Button("Done") {
                 dismiss()
             }
@@ -240,54 +223,26 @@ struct VideoWorkspaceView: View {
     @ViewBuilder
     private var previewArea: some View {
         if primaryVideoAsset != nil {
-            switch layoutMode {
-            case .sideBySide:
-                HStack(spacing: 12) {
+            HStack(spacing: 12) {
+                WorkspaceVideoPreview(
+                    player: primaryPlayer,
+                    videoSize: videoDisplaySize(for: primaryVideoAsset),
+                    rotationQuarterTurns: 0,
+                    cropRectNormalized: .constant(CGRect(x: 0, y: 0, width: 1, height: 1)),
+                    isEditingCrop: .constant(false),
+                    showEditingTools: false
+                )
+                if let equipmentAsset = equipmentVideoAsset {
                     WorkspaceVideoPreview(
-                        player: primaryPlayer,
-                        videoSize: videoDisplaySize(for: primaryVideoAsset),
-                        rotationQuarterTurns: 0,
-                        cropRectNormalized: .constant(CGRect(x: 0, y: 0, width: 1, height: 1)),
-                        isEditingCrop: .constant(false),
-                        showEditingTools: false
+                        player: equipmentPlayer,
+                        videoSize: videoDisplaySize(for: equipmentAsset),
+                        rotationQuarterTurns: syncConfiguration.normalizedEquipmentRotationQuarterTurns,
+                        cropRectNormalized: equipmentCropBinding,
+                        isEditingCrop: $isEditingEquipmentFrame,
+                        showEditingTools: true,
+                        onRotateClockwise: rotateEquipmentClockwise,
+                        onResetCrop: resetEquipmentCrop
                     )
-                    if let equipmentAsset = equipmentVideoAsset {
-                        WorkspaceVideoPreview(
-                            player: equipmentPlayer,
-                            videoSize: videoDisplaySize(for: equipmentAsset),
-                            rotationQuarterTurns: syncConfiguration.normalizedEquipmentRotationQuarterTurns,
-                            cropRectNormalized: equipmentCropBinding,
-                            isEditingCrop: $isEditingEquipmentFrame,
-                            showEditingTools: true,
-                            onRotateClockwise: rotateEquipmentClockwise,
-                            onResetCrop: resetEquipmentCrop
-                        )
-                    }
-                }
-            case .pip:
-                ZStack(alignment: .bottomTrailing) {
-                    WorkspaceVideoPreview(
-                        player: primaryPlayer,
-                        videoSize: videoDisplaySize(for: primaryVideoAsset),
-                        rotationQuarterTurns: 0,
-                        cropRectNormalized: .constant(CGRect(x: 0, y: 0, width: 1, height: 1)),
-                        isEditingCrop: .constant(false),
-                        showEditingTools: false
-                    )
-                    if let equipmentAsset = equipmentVideoAsset {
-                        WorkspaceVideoPreview(
-                            player: equipmentPlayer,
-                            videoSize: videoDisplaySize(for: equipmentAsset),
-                            rotationQuarterTurns: syncConfiguration.normalizedEquipmentRotationQuarterTurns,
-                            cropRectNormalized: equipmentCropBinding,
-                            isEditingCrop: $isEditingEquipmentFrame,
-                            showEditingTools: true,
-                            onRotateClockwise: rotateEquipmentClockwise,
-                            onResetCrop: resetEquipmentCrop
-                        )
-                            .frame(width: 320, height: 180)
-                            .padding(12)
-                    }
                 }
             }
         } else {
@@ -323,35 +278,6 @@ struct VideoWorkspaceView: View {
         }
     }
 
-    private var trimControls: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Trim Range")
-                .font(.headline)
-
-            VStack {
-                HStack {
-                    Text("Trim In")
-                    TextField("", value: trimInBinding, format: .number.precision(.fractionLength(2)))
-                        .labelsHidden()
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 100)
-                }
-
-                HStack {
-                    Text("Trim Out")
-                    TextField("", value: trimOutBinding, format: .number.precision(.fractionLength(2)))
-                        .labelsHidden()
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 100)
-                }
-            }
-
-            Text("Primary Duration: \(String(format: "%.2f", trimUpperBound))s")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
     private var alignmentControls: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Alignment")
@@ -375,34 +301,6 @@ struct VideoWorkspaceView: View {
                     .frame(width: 120)
                     .multilineTextAlignment(.trailing)
             }
-        }
-    }
-
-    private var playbackControls: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Linked Playback")
-                .font(.headline)
-
-            HStack {
-                Button(isPlayingSynced ? "Pause Both" : "Play Both") {
-                    if isPlayingSynced {
-                        pauseSyncedPlayback()
-                    } else {
-                        playSyncedFromTrimStart()
-                    }
-                }
-                .disabled(primaryVideoAsset == nil)
-
-                Button("Reset to Trim In") {
-                    pauseSyncedPlayback()
-                    seekPlayersToTrimStart()
-                }
-                .disabled(primaryVideoAsset == nil)
-            }
-
-            Text("Primary audio only; equipment preview is muted.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -516,18 +414,6 @@ struct VideoWorkspaceView: View {
                 forceSamples: samples
             )
             try await exportService.exportComposedVideo(request: request)
-
-            let values = try outputURL.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey])
-            let exportAsset = Asset(
-                test: test,
-                assetType: .export,
-                filename: outputURL.lastPathComponent,
-                fileURL: outputURL,
-                byteSize: values.fileSize.map(Int64.init),
-                contentType: values.contentType?.identifier
-            )
-            modelContext.insert(exportAsset)
-            test.assets.append(exportAsset)
             statusMessage = "Export completed: \(outputURL.lastPathComponent)"
         } catch {
             errorMessage = error.localizedDescription

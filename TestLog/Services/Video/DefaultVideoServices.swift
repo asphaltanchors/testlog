@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import CoreText
 import CryptoKit
 import Foundation
 import SwiftData
@@ -385,7 +386,7 @@ struct DefaultVideoExportService: VideoExporting {
             }
             let pipSize = CGSize(width: request.renderSize.width * 0.30, height: request.renderSize.height * 0.30)
             let pipRect = CGRect(
-                x: 32,
+                x: 24,
                 y: request.renderSize.height - pipSize.height - 32,
                 width: pipSize.width,
                 height: pipSize.height
@@ -394,7 +395,7 @@ struct DefaultVideoExportService: VideoExporting {
                 try await placedTransform(
                     for: secondarySourceTrack,
                     destination: pipRect,
-                    contentMode: .fit,
+                    contentMode: .fitLeading,
                     extraQuarterTurnsClockwise: request.syncConfiguration.normalizedEquipmentRotationQuarterTurns,
                     cropRectNormalized: request.syncConfiguration.equipmentCropRectNormalized
                 ),
@@ -434,6 +435,7 @@ struct DefaultVideoExportService: VideoExporting {
     private enum ContentMode {
         case fill
         case fit
+        case fitLeading
     }
 
     private func placedTransform(
@@ -468,12 +470,20 @@ struct DefaultVideoExportService: VideoExporting {
         switch contentMode {
         case .fill:
             scale = max(destination.width / croppedRect.width, destination.height / croppedRect.height)
-        case .fit:
+        case .fit, .fitLeading:
             scale = min(destination.width / croppedRect.width, destination.height / croppedRect.height)
         }
         let scaled = CGSize(width: croppedRect.width * scale, height: croppedRect.height * scale)
-        let tx = destination.minX + (destination.width - scaled.width) / 2
-        let ty = destination.minY + (destination.height - scaled.height) / 2
+        let tx: CGFloat
+        let ty: CGFloat
+        switch contentMode {
+        case .fitLeading:
+            tx = destination.minX
+            ty = destination.minY + (destination.height - scaled.height) / 2
+        case .fill, .fit:
+            tx = destination.minX + (destination.width - scaled.width) / 2
+            ty = destination.minY + (destination.height - scaled.height) / 2
+        }
 
         return normalizedOrientation
             .concatenating(quarterTurnTransform)
@@ -531,10 +541,12 @@ struct DefaultVideoExportService: VideoExporting {
         let overlay = CALayer()
         overlay.frame = CGRect(origin: .zero, size: renderSize)
 
+        let leftMargin: CGFloat = 24
         let box = CALayer()
         box.backgroundColor = CGColor(gray: 0, alpha: 0.5)
         box.cornerRadius = 10
-        box.frame = CGRect(x: 24, y: renderSize.height - 140, width: renderSize.width * 0.45, height: 110)
+        let infoBoxFrame = CGRect(x: leftMargin, y: renderSize.height - 140, width: renderSize.width * 0.45, height: 110)
+        box.frame = infoBoxFrame
         overlay.addSublayer(box)
 
         let title = CATextLayer()
@@ -554,11 +566,12 @@ struct DefaultVideoExportService: VideoExporting {
         overlay.addSublayer(subtitle)
 
         if !request.forceSamples.isEmpty {
+            let graphHeight: CGFloat = 150
             let graphRect = CGRect(
                 x: renderSize.width * 0.52,
-                y: renderSize.height - 200,
+                y: infoBoxFrame.maxY - graphHeight,
                 width: renderSize.width * 0.44,
-                height: 150
+                height: graphHeight
             )
             let graphBackground = CALayer()
             graphBackground.frame = graphRect
@@ -571,28 +584,58 @@ struct DefaultVideoExportService: VideoExporting {
             graphLayer.strokeColor = CGColor(red: 0.2, green: 0.85, blue: 0.95, alpha: 1.0)
             graphLayer.fillColor = nil
             graphLayer.lineWidth = 2
-            graphLayer.path = buildGraphPath(samples: request.forceSamples, in: graphRect.size)
+            let graphPoints = buildGraphPoints(samples: request.forceSamples, in: graphRect.size)
+            graphLayer.path = buildGraphPath(points: graphPoints.map(\.point))
             overlay.addSublayer(graphLayer)
+
+            let trimIn = request.syncConfiguration.trimInSeconds ?? 0
+            let trimOut = request.syncConfiguration.trimOutSeconds ?? max(trimIn, 0)
+            let animatedSamples = markerSamples(
+                from: graphPoints,
+                startTime: max(trimIn, graphPoints.first?.time ?? trimIn),
+                endTime: min(max(trimOut, trimIn + 0.0001), graphPoints.last?.time ?? trimOut)
+            )
+
+            if let markerLayer = buildGraphMarkerLayer(animatedSamples: animatedSamples) {
+                graphLayer.addSublayer(markerLayer)
+            }
+
+            if let forceLabel = buildCurrentForceLabelLayer(animatedSamples: animatedSamples, trimIn: trimIn, trimOut: trimOut) {
+                graphLayer.addSublayer(forceLabel)
+            }
         }
 
         return overlay
     }
 
-    private func buildGraphPath(samples: [ParsedForceSample], in size: CGSize) -> CGPath {
-        let path = CGMutablePath()
-        guard samples.count > 1 else { return path }
+    private struct GraphPoint {
+        let time: Double
+        let point: CGPoint
+        let force: Double
+    }
 
-        let minTime = samples.map(\.timeSeconds).min() ?? 0
-        let maxTime = samples.map(\.timeSeconds).max() ?? 1
-        let minForce = samples.map(\.forceLbs).min() ?? 0
-        let maxForce = samples.map(\.forceLbs).max() ?? 1
+    private func buildGraphPoints(samples: [ParsedForceSample], in size: CGSize) -> [GraphPoint] {
+        guard samples.count > 1 else { return [] }
+
+        let sorted = samples.sorted { $0.timeSeconds < $1.timeSeconds }
+        let minTime = sorted.first?.timeSeconds ?? 0
+        let maxTime = sorted.last?.timeSeconds ?? 1
+        let minForce = sorted.map(\.forceLbs).min() ?? 0
+        let maxForce = sorted.map(\.forceLbs).max() ?? 1
         let timeRange = max(maxTime - minTime, 0.0001)
         let forceRange = max(maxForce - minForce, 0.0001)
 
-        for (index, sample) in samples.enumerated() {
+        return sorted.map { sample in
             let x = ((sample.timeSeconds - minTime) / timeRange) * size.width
             let y = ((sample.forceLbs - minForce) / forceRange) * size.height
-            let point = CGPoint(x: x, y: y)
+            return GraphPoint(time: sample.timeSeconds, point: CGPoint(x: x, y: y), force: sample.forceLbs)
+        }
+    }
+
+    private func buildGraphPath(points: [CGPoint]) -> CGPath {
+        let path = CGMutablePath()
+        guard points.count > 1 else { return path }
+        for (index, point) in points.enumerated() {
             if index == 0 {
                 path.move(to: point)
             } else {
@@ -600,6 +643,158 @@ struct DefaultVideoExportService: VideoExporting {
             }
         }
         return path
+    }
+
+    private func buildGraphMarkerLayer(animatedSamples: [GraphPoint]) -> CALayer? {
+        guard let first = animatedSamples.first else { return nil }
+
+        let marker = CAShapeLayer()
+        marker.path = CGPath(ellipseIn: CGRect(x: -4, y: -4, width: 8, height: 8), transform: nil)
+        marker.fillColor = CGColor(red: 1, green: 0.35, blue: 0.25, alpha: 1)
+        marker.strokeColor = CGColor(gray: 1, alpha: 0.9)
+        marker.lineWidth = 1
+        marker.position = first.point
+
+        let start = first.time
+        let end = animatedSamples.last?.time ?? first.time
+        let duration = max(end - start, 0.0001)
+        let animation = CAKeyframeAnimation(keyPath: "position")
+        animation.values = animatedSamples.map { NSValue(point: $0.point) }
+        animation.keyTimes = animatedSamples.map { NSNumber(value: ($0.time - start) / duration) }
+        animation.duration = duration
+        animation.beginTime = AVCoreAnimationBeginTimeAtZero
+        animation.calculationMode = .linear
+        animation.fillMode = .forwards
+        animation.isRemovedOnCompletion = false
+        marker.add(animation, forKey: "graphMarkerPosition")
+
+        return marker
+    }
+
+    private func buildCurrentForceLabelLayer(animatedSamples: [GraphPoint], trimIn: Double, trimOut: Double) -> CALayer? {
+        guard let first = animatedSamples.first else { return nil }
+        let duration = max(trimOut - trimIn, 0.0001)
+        let labelFrame = CGRect(x: 12, y: 6, width: 240, height: 24)
+        let label = CALayer()
+        label.contentsScale = 2
+        label.frame = labelFrame
+        label.contentsGravity = .resize
+
+        let initialText = formattedForce(first.force)
+        guard let initialImage = renderForceLabelImage(text: initialText, size: labelFrame.size) else { return nil }
+        label.contents = initialImage
+
+        let keyTimes = animatedSamples.map { NSNumber(value: min(max(($0.time - trimIn) / duration, 0), 1)) }
+        let frames: [CGImage] = animatedSamples.compactMap { sample in
+            renderForceLabelImage(text: formattedForce(sample.force), size: labelFrame.size)
+        }
+        guard frames.count == keyTimes.count, !frames.isEmpty else { return label }
+
+        let animation = CAKeyframeAnimation(keyPath: "contents")
+        animation.values = frames
+        animation.keyTimes = keyTimes
+        animation.duration = duration
+        animation.beginTime = AVCoreAnimationBeginTimeAtZero
+        animation.calculationMode = .discrete
+        animation.fillMode = .forwards
+        animation.isRemovedOnCompletion = false
+        label.add(animation, forKey: "forceValueText")
+
+        return label
+    }
+
+    private func markerSamples(from points: [GraphPoint], startTime: Double, endTime: Double) -> [GraphPoint] {
+        var output: [GraphPoint] = []
+        let startPoint = interpolatedPoint(at: startTime, in: points)
+        output.append(GraphPoint(time: startTime, point: startPoint, force: interpolatedForce(at: startTime, in: points)))
+        output.append(contentsOf: points.filter { $0.time > startTime && $0.time < endTime })
+        let endPoint = interpolatedPoint(at: endTime, in: points)
+        output.append(GraphPoint(time: endTime, point: endPoint, force: interpolatedForce(at: endTime, in: points)))
+
+        var deduped: [GraphPoint] = []
+        for sample in output.sorted(by: { $0.time < $1.time }) {
+            if let last = deduped.last, abs(last.time - sample.time) < 0.000001 {
+                deduped[deduped.count - 1] = sample
+            } else {
+                deduped.append(sample)
+            }
+        }
+        return deduped
+    }
+
+    private func interpolatedPoint(at time: Double, in points: [GraphPoint]) -> CGPoint {
+        guard let first = points.first, let last = points.last else { return .zero }
+        if time <= first.time { return first.point }
+        if time >= last.time { return last.point }
+
+        for index in 1..<points.count {
+            let left = points[index - 1]
+            let right = points[index]
+            if time <= right.time {
+                let span = max(right.time - left.time, 0.000001)
+                let t = (time - left.time) / span
+                return CGPoint(
+                    x: left.point.x + (right.point.x - left.point.x) * t,
+                    y: left.point.y + (right.point.y - left.point.y) * t
+                )
+            }
+        }
+        return last.point
+    }
+
+    private func interpolatedForce(at time: Double, in points: [GraphPoint]) -> Double {
+        guard let first = points.first, let last = points.last else { return 0 }
+        if time <= first.time { return first.force }
+        if time >= last.time { return last.force }
+
+        for index in 1..<points.count {
+            let left = points[index - 1]
+            let right = points[index]
+            if time <= right.time {
+                let span = max(right.time - left.time, 0.000001)
+                let t = (time - left.time) / span
+                return left.force + (right.force - left.force) * t
+            }
+        }
+        return last.force
+    }
+
+    private func formattedForce(_ forceLbs: Double) -> String {
+        String(format: "Force: %.2f lbf", forceLbs)
+    }
+
+    private func renderForceLabelImage(text: String, size: CGSize) -> CGImage? {
+        let width = max(Int(size.width * 2), 1)
+        let height = max(Int(size.height * 2), 1)
+        guard
+            let context = CGContext(
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        else {
+            return nil
+        }
+
+        context.scaleBy(x: 2, y: 2)
+        context.setFillColor(CGColor(gray: 1, alpha: 0.95))
+        context.textMatrix = .identity
+
+        let font = CTFontCreateWithName("HelveticaNeue-Medium" as CFString, 16, nil)
+        let attributes: [CFString: Any] = [
+            kCTFontAttributeName: font,
+            kCTForegroundColorAttributeName: CGColor(gray: 1, alpha: 0.95)
+        ]
+        let attributed = CFAttributedStringCreate(nil, text as CFString, attributes as CFDictionary)!
+        let line = CTLineCreateWithAttributedString(attributed)
+        context.textPosition = CGPoint(x: 0, y: 4)
+        CTLineDraw(line, context)
+
+        return context.makeImage()
     }
 }
 

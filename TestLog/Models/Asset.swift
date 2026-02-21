@@ -13,7 +13,7 @@ final class Asset {
     var test: PullTest?
     var assetType: AssetType
     var filename: String
-    var fileURL: URL
+    var relativePath: String
     var createdAt: Date
     var notes: String?
     var byteSize: Int64?
@@ -26,11 +26,16 @@ final class Asset {
     var isManagedCopy: Bool
     var videoRole: VideoRole?
 
+    var resolvedURL: URL? {
+        guard let root = try? MediaPaths.mediaRootDirectory() else { return nil }
+        return root.appendingPathComponent(relativePath)
+    }
+
     init(
         test: PullTest? = nil,
         assetType: AssetType,
         filename: String,
-        fileURL: URL,
+        relativePath: String,
         createdAt: Date = Date(),
         notes: String? = nil,
         byteSize: Int64? = nil,
@@ -46,7 +51,7 @@ final class Asset {
         self.test = test
         self.assetType = assetType
         self.filename = filename
-        self.fileURL = fileURL
+        self.relativePath = relativePath
         self.createdAt = createdAt
         self.notes = notes
         self.byteSize = byteSize

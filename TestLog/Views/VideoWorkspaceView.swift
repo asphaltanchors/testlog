@@ -371,7 +371,11 @@ struct VideoWorkspaceView: View {
         isRunningAutoSync = true
         defer { isRunningAutoSync = false }
         do {
-            let result = try await syncService.detectOffset(primaryURL: primary.fileURL, secondaryURL: equipment.fileURL)
+            guard let primaryURL = primary.resolvedURL, let equipmentURL = equipment.resolvedURL else {
+                errorMessage = "Cannot resolve video file paths."
+                return
+            }
+            let result = try await syncService.detectOffset(primaryURL: primaryURL, secondaryURL: equipmentURL)
             syncConfiguration.autoOffsetSeconds = result.detectedOffsetSeconds
             syncConfiguration.lastSyncedAt = Date()
             pauseSyncedPlayback()
@@ -397,8 +401,8 @@ struct VideoWorkspaceView: View {
         defer { isExportingVideo = false }
         do {
             let samples: [ParsedForceSample]
-            if let testerAsset = test.testerBinaryAsset {
-                samples = try testerDataParser.parseSamples(from: testerAsset.fileURL)
+            if let testerAsset = test.testerBinaryAsset, let testerURL = testerAsset.resolvedURL {
+                samples = try testerDataParser.parseSamples(from: testerURL)
             } else {
                 samples = []
             }
@@ -427,13 +431,13 @@ struct VideoWorkspaceView: View {
     private func reloadPlayers() {
         pauseSyncedPlayback()
 
-        if let primaryURL = primaryVideoAsset?.fileURL {
+        if let primaryURL = primaryVideoAsset?.resolvedURL {
             primaryPlayer.replaceCurrentItem(with: AVPlayerItem(url: primaryURL))
         } else {
             primaryPlayer.replaceCurrentItem(with: nil)
         }
 
-        if let equipmentURL = equipmentVideoAsset?.fileURL {
+        if let equipmentURL = equipmentVideoAsset?.resolvedURL {
             equipmentPlayer.replaceCurrentItem(with: AVPlayerItem(url: equipmentURL))
         } else {
             equipmentPlayer.replaceCurrentItem(with: nil)

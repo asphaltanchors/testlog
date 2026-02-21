@@ -58,7 +58,7 @@ enum VideoFeatureError: LocalizedError {
     case missingPrimaryVideo
     case trimRangeRequired
     case invalidTrimRange
-    case assetNotReadable(URL)
+    case assetNotReadable(String)
     case exportFailed
 
     var errorDescription: String? {
@@ -79,8 +79,8 @@ enum VideoFeatureError: LocalizedError {
             return "Set trim-in and trim-out before exporting."
         case .invalidTrimRange:
             return "Trim range is invalid."
-        case .assetNotReadable(let url):
-            return "Cannot read asset: \(url.lastPathComponent)"
+        case .assetNotReadable(let name):
+            return "Cannot read asset: \(name)"
         case .exportFailed:
             return "Video export failed."
         }
@@ -88,8 +88,8 @@ enum VideoFeatureError: LocalizedError {
 }
 
 protocol AssetStorageManaging {
-    func managedLocation(forTestStorageKey testStorageKey: String, assetID: UUID, originalFilename: String) throws -> URL
-    func copyIntoManagedStorage(from sourceURL: URL, forTestStorageKey testStorageKey: String, assetID: UUID, originalFilename: String) throws -> URL
+    func managedLocation(forTestStorageKey testStorageKey: String, assetID: UUID, originalFilename: String) throws -> String
+    func copyIntoManagedStorage(from sourceURL: URL, forTestStorageKey testStorageKey: String, assetID: UUID, originalFilename: String) throws -> String
     func removeManagedFileIfUnreferenced(_ asset: Asset, allAssets: [Asset]) throws
 }
 

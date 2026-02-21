@@ -174,7 +174,7 @@ enum SchemaV1: VersionedSchema {
         var test: PullTest?
         var assetType: AssetType
         var filename: String
-        var fileURL: URL
+        var relativePath: String
         var createdAt: Date
         var notes: String?
         var byteSize: Int64?
@@ -190,13 +190,13 @@ enum SchemaV1: VersionedSchema {
         init(
             assetType: AssetType = .photo,
             filename: String = "",
-            fileURL: URL = URL(fileURLWithPath: ""),
+            relativePath: String = "",
             createdAt: Date = Date(),
             isManagedCopy: Bool = false
         ) {
             self.assetType = assetType
             self.filename = filename
-            self.fileURL = fileURL
+            self.relativePath = relativePath
             self.createdAt = createdAt
             self.isManagedCopy = isManagedCopy
         }
@@ -309,22 +309,18 @@ enum TestLogContainer {
             appropriateFor: nil,
             create: true
         )
-        let appDirectoryURL = applicationSupportURL
-            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "TestLog", isDirectory: true)
-        let candidateDirectories = [applicationSupportURL, appDirectoryURL]
 
-        for directory in candidateDirectories where fileManager.fileExists(atPath: directory.path) {
-            let directoryContents = try fileManager.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            )
+        guard fileManager.fileExists(atPath: applicationSupportURL.path) else { return }
+        let directoryContents = try fileManager.contentsOfDirectory(
+            at: applicationSupportURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
 
-            for url in directoryContents {
-                let fileName = url.lastPathComponent
-                if fileName.contains(configurationName) {
-                    try fileManager.removeItem(at: url)
-                }
+        for url in directoryContents {
+            let fileName = url.lastPathComponent
+            if fileName.contains(configurationName) {
+                try fileManager.removeItem(at: url)
             }
         }
     }
@@ -354,24 +350,20 @@ enum TestLogContainer {
             return
         }
 
-        let bundleID = Bundle.main.bundleIdentifier ?? "TestLog"
-        let candidateDirectories = [appSupport, appSupport.appendingPathComponent(bundleID, isDirectory: true)]
+        guard fileManager.fileExists(atPath: appSupport.path) else { return }
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: appSupport,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return }
 
-        for directory in candidateDirectories where fileManager.fileExists(atPath: directory.path) {
-            guard let contents = try? fileManager.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            ) else { continue }
-
-            for url in contents where url.lastPathComponent.contains("TestLog") {
-                let destination = backupDir.appendingPathComponent(url.lastPathComponent)
-                do {
-                    try fileManager.copyItem(at: url, to: destination)
-                    print("Backed up: \(url.lastPathComponent)")
-                } catch {
-                    print("Failed to back up \(url.lastPathComponent): \(error)")
-                }
+        for url in contents where url.lastPathComponent.contains("TestLog") {
+            let destination = backupDir.appendingPathComponent(url.lastPathComponent)
+            do {
+                try fileManager.copyItem(at: url, to: destination)
+                print("Backed up: \(url.lastPathComponent)")
+            } catch {
+                print("Failed to back up \(url.lastPathComponent): \(error)")
             }
         }
 

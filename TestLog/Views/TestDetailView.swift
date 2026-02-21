@@ -625,7 +625,7 @@ struct TestDetailView: View {
                     test: test,
                     assetType: imported.assetType,
                     filename: candidate.sourceURL.lastPathComponent,
-                    fileURL: imported.destinationURL,
+                    relativePath: imported.relativePath,
                     notes: nil,
                     byteSize: imported.metadata.byteSize,
                     contentType: imported.metadata.contentType,
@@ -671,17 +671,19 @@ struct TestDetailView: View {
             }
 
             let provisionalID = UUID()
-            let destinationURL = try storage.copyIntoManagedStorage(
+            let relativePath = try storage.copyIntoManagedStorage(
                 from: candidate.sourceURL,
                 forTestStorageKey: testStorageKey,
                 assetID: provisionalID,
                 originalFilename: candidate.sourceURL.lastPathComponent
             )
-            let metadata = try await probe.probe(url: destinationURL, assetType: candidate.selectedAssetType)
+            let root = try MediaPaths.mediaRootDirectory()
+            let absoluteURL = root.appendingPathComponent(relativePath)
+            let metadata = try await probe.probe(url: absoluteURL, assetType: candidate.selectedAssetType)
             let testerPeakForceLbs: Double?
             if candidate.selectedAssetType == .testerData {
                 let parser = LBYTesterDataParser()
-                let samples = try parser.parseSamples(from: destinationURL)
+                let samples = try parser.parseSamples(from: absoluteURL)
                 testerPeakForceLbs = samples
                     .map(\.forceLbs)
                     .filter { $0.isFinite && $0 > 0 }
@@ -690,7 +692,7 @@ struct TestDetailView: View {
                 testerPeakForceLbs = nil
             }
             return ImportedAssetWorkResult(
-                destinationURL: destinationURL,
+                relativePath: relativePath,
                 assetType: candidate.selectedAssetType,
                 videoRole: candidate.selectedVideoRole,
                 metadata: metadata,
@@ -722,7 +724,7 @@ struct TestDetailView: View {
 }
 
 private struct ImportedAssetWorkResult: Sendable {
-    let destinationURL: URL
+    let relativePath: String
     let assetType: AssetType
     let videoRole: VideoRole
     let metadata: AssetImportMetadata

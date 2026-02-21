@@ -16,52 +16,40 @@ struct ManagedAssetStorageManager: AssetStorageManaging, Sendable {
     private let fileManager = FileManager.default
     nonisolated init() {}
 
-    nonisolated func managedLocation(forTestStorageKey testStorageKey: String, assetID: UUID, originalFilename: String) throws -> URL {
-        let root = try mediaRootDirectory()
+    nonisolated func managedLocation(forTestStorageKey testStorageKey: String, assetID: UUID, originalFilename: String) throws -> String {
+        let root = try MediaPaths.mediaRootDirectory()
         let testFolder = testStorageKey.urlEncodedFilename
         let destinationDirectory = root
             .appendingPathComponent(testFolder, isDirectory: true)
             .appendingPathComponent(assetID.uuidString, isDirectory: true)
         try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
-        return destinationDirectory.appendingPathComponent(originalFilename, isDirectory: false)
+        return "\(testFolder)/\(assetID.uuidString)/\(originalFilename)"
     }
 
-    nonisolated func copyIntoManagedStorage(from sourceURL: URL, forTestStorageKey testStorageKey: String, assetID: UUID, originalFilename: String) throws -> URL {
-        let destinationURL = try managedLocation(forTestStorageKey: testStorageKey, assetID: assetID, originalFilename: originalFilename)
+    nonisolated func copyIntoManagedStorage(from sourceURL: URL, forTestStorageKey testStorageKey: String, assetID: UUID, originalFilename: String) throws -> String {
+        let relativePath = try managedLocation(forTestStorageKey: testStorageKey, assetID: assetID, originalFilename: originalFilename)
+        let root = try MediaPaths.mediaRootDirectory()
+        let destinationURL = root.appendingPathComponent(relativePath)
         if fileManager.fileExists(atPath: destinationURL.path) {
             try fileManager.removeItem(at: destinationURL)
         }
         try fileManager.copyItem(at: sourceURL, to: destinationURL)
-        return destinationURL
+        return relativePath
     }
 
     nonisolated func removeManagedFileIfUnreferenced(_ asset: Asset, allAssets: [Asset]) throws {
         guard asset.isManagedCopy else { return }
-        let refCount = allAssets.filter { $0.fileURL.path == asset.fileURL.path && $0.persistentModelID != asset.persistentModelID }.count
+        let refCount = allAssets.filter { $0.relativePath == asset.relativePath && $0.persistentModelID != asset.persistentModelID }.count
         guard refCount == 0 else { return }
-        if fileManager.fileExists(atPath: asset.fileURL.path) {
-            try fileManager.removeItem(at: asset.fileURL)
+        guard let resolvedURL = asset.resolvedURL else { return }
+        if fileManager.fileExists(atPath: resolvedURL.path) {
+            try fileManager.removeItem(at: resolvedURL)
         }
 
-        let parent = asset.fileURL.deletingLastPathComponent()
+        let parent = resolvedURL.deletingLastPathComponent()
         if (try? fileManager.contentsOfDirectory(atPath: parent.path).isEmpty) == true {
             try? fileManager.removeItem(at: parent)
         }
-    }
-
-    private nonisolated func mediaRootDirectory() throws -> URL {
-        let appSupport = try fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let bundleID = Bundle.main.bundleIdentifier ?? "TestLog"
-        let root = appSupport
-            .appendingPathComponent(bundleID, isDirectory: true)
-            .appendingPathComponent("Media", isDirectory: true)
-        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
     }
 }
 
@@ -99,7 +87,7 @@ struct DefaultAssetMetadataProbe: AssetMetadataProbing, Sendable {
 
     private nonisolated func sha256(url: URL) throws -> String {
         guard let handle = try? FileHandle(forReadingFrom: url) else {
-            throw VideoFeatureError.assetNotReadable(url)
+            throw VideoFeatureError.assetNotReadable(url.lastPathComponent)
         }
         defer { try? handle.close() }
 
@@ -322,13 +310,16 @@ struct DefaultVideoExportService: VideoExporting {
             throw VideoFeatureError.invalidTrimRange
         }
 
-        let primarySource = AVURLAsset(url: request.primaryAsset.fileURL)
+        guard let primaryURL = request.primaryAsset.resolvedURL else {
+            throw VideoFeatureError.assetNotReadable(request.primaryAsset.filename)
+        }
+        let primarySource = AVURLAsset(url: primaryURL)
         let composition = AVMutableComposition()
         guard
             let primaryVideoTrack = try await primarySource.loadTracks(withMediaType: .video).first,
             let compositionPrimaryTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
         else {
-            throw VideoFeatureError.assetNotReadable(request.primaryAsset.fileURL)
+            throw VideoFeatureError.assetNotReadable(request.primaryAsset.filename)
         }
 
         let start = CMTime(seconds: trimIn, preferredTimescale: 600)
@@ -345,8 +336,8 @@ struct DefaultVideoExportService: VideoExporting {
         }
 
         var secondaryCompositionTrack: AVMutableCompositionTrack?
-        if let equipmentAsset = request.equipmentAsset {
-            let secondarySource = AVURLAsset(url: equipmentAsset.fileURL)
+        if let equipmentAsset = request.equipmentAsset, let equipmentURL = equipmentAsset.resolvedURL {
+            let secondarySource = AVURLAsset(url: equipmentURL)
             if
                 let equipmentVideoTrack = try await secondarySource.loadTracks(withMediaType: .video).first,
                 let compositionSecondaryTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
@@ -378,11 +369,11 @@ struct DefaultVideoExportService: VideoExporting {
         )
         var layerInstructions: [AVVideoCompositionLayerInstruction] = [primaryLayer]
 
-        if let secondaryTrack = secondaryCompositionTrack, let equipmentAsset = request.equipmentAsset {
+        if let secondaryTrack = secondaryCompositionTrack, let equipmentAsset = request.equipmentAsset, let equipmentURL = equipmentAsset.resolvedURL {
             let secondaryLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: secondaryTrack)
-            let secondarySource = AVURLAsset(url: equipmentAsset.fileURL)
+            let secondarySource = AVURLAsset(url: equipmentURL)
             guard let secondarySourceTrack = try await secondarySource.loadTracks(withMediaType: .video).first else {
-                throw VideoFeatureError.assetNotReadable(equipmentAsset.fileURL)
+                throw VideoFeatureError.assetNotReadable(equipmentAsset.filename)
             }
             let pipSize = CGSize(width: request.renderSize.width * 0.30, height: request.renderSize.height * 0.30)
             let pipRect = CGRect(

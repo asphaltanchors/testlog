@@ -8,7 +8,7 @@
 import Foundation
 
 enum MediaPaths {
-    static func mediaRootDirectory() throws -> URL {
+    nonisolated static func mediaRootDirectory() throws -> URL {
         let appSupport = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,

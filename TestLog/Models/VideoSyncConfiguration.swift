@@ -83,27 +83,3 @@ final class VideoSyncConfiguration {
         }
     }
 }
-
-private extension CGRect {
-    func clampedNormalized(minSize: CGFloat) -> CGRect {
-        let normalizedMin = min(max(minSize, 0), 1)
-        var rect = self.standardized
-        rect.origin.x = rect.origin.x.isFinite ? rect.origin.x : 0
-        rect.origin.y = rect.origin.y.isFinite ? rect.origin.y : 0
-        rect.size.width = rect.size.width.isFinite ? rect.size.width : 1
-        rect.size.height = rect.size.height.isFinite ? rect.size.height : 1
-
-        rect.origin.x = min(max(rect.origin.x, 0), 1)
-        rect.origin.y = min(max(rect.origin.y, 0), 1)
-        rect.size.width = min(max(rect.size.width, normalizedMin), 1)
-        rect.size.height = min(max(rect.size.height, normalizedMin), 1)
-
-        if rect.maxX > 1 {
-            rect.origin.x = max(0, 1 - rect.width)
-        }
-        if rect.maxY > 1 {
-            rect.origin.y = max(0, 1 - rect.height)
-        }
-        return rect
-    }
-}

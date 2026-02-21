@@ -334,7 +334,7 @@ struct DefaultVideoExportService: VideoExporting {
         let duration = CMTime(seconds: trimOut - trimIn, preferredTimescale: 600)
         let range = CMTimeRange(start: start, duration: duration)
         try compositionPrimaryTrack.insertTimeRange(range, of: primaryVideoTrack, at: .zero)
-        compositionPrimaryTrack.preferredTransform = try await primaryVideoTrack.load(.preferredTransform)
+        compositionPrimaryTrack.preferredTransform = .identity
 
         if
             let primaryAudioTrack = try await primarySource.loadTracks(withMediaType: .audio).first,
@@ -357,7 +357,7 @@ struct DefaultVideoExportService: VideoExporting {
                     duration: duration
                 )
                 try compositionSecondaryTrack.insertTimeRange(sourceRange, of: equipmentVideoTrack, at: .zero)
-                compositionSecondaryTrack.preferredTransform = try await equipmentVideoTrack.load(.preferredTransform)
+                compositionSecondaryTrack.preferredTransform = .identity
                 secondaryCompositionTrack = compositionSecondaryTrack
             }
         }
@@ -370,21 +370,36 @@ struct DefaultVideoExportService: VideoExporting {
         instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
 
         let primaryLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: compositionPrimaryTrack)
-        let primarySize = try await transformedSize(for: primaryVideoTrack)
-        primaryLayer.setTransform(scaleAndCenterTransform(source: primarySize, target: request.renderSize), at: .zero)
+        let fullFrameRect = CGRect(origin: .zero, size: request.renderSize)
+        primaryLayer.setTransform(
+            try await placedTransform(for: primaryVideoTrack, destination: fullFrameRect, contentMode: .fill),
+            at: .zero
+        )
         var layerInstructions: [AVVideoCompositionLayerInstruction] = [primaryLayer]
 
-        if let secondaryTrack = secondaryCompositionTrack {
+        if let secondaryTrack = secondaryCompositionTrack, let equipmentAsset = request.equipmentAsset {
             let secondaryLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: secondaryTrack)
-            let secondarySize = try await transformedSize(for: secondaryTrack)
+            let secondarySource = AVURLAsset(url: equipmentAsset.fileURL)
+            guard let secondarySourceTrack = try await secondarySource.loadTracks(withMediaType: .video).first else {
+                throw VideoFeatureError.assetNotReadable(equipmentAsset.fileURL)
+            }
             let pipSize = CGSize(width: request.renderSize.width * 0.30, height: request.renderSize.height * 0.30)
             let pipRect = CGRect(
-                x: request.renderSize.width - pipSize.width - 32,
-                y: 32,
+                x: 32,
+                y: request.renderSize.height - pipSize.height - 32,
                 width: pipSize.width,
                 height: pipSize.height
             )
-            secondaryLayer.setTransform(scaleAndFitTransform(source: secondarySize, destination: pipRect), at: .zero)
+            secondaryLayer.setTransform(
+                try await placedTransform(
+                    for: secondarySourceTrack,
+                    destination: pipRect,
+                    contentMode: .fit,
+                    extraQuarterTurnsClockwise: request.syncConfiguration.normalizedEquipmentRotationQuarterTurns,
+                    cropRectNormalized: request.syncConfiguration.equipmentCropRectNormalized
+                ),
+                at: .zero
+            )
             layerInstructions.insert(secondaryLayer, at: 0)
         }
 
@@ -416,29 +431,100 @@ struct DefaultVideoExportService: VideoExporting {
         try await exportSession.export(to: request.outputURL, as: .mp4)
     }
 
-    private func transformedSize(for track: AVAssetTrack) async throws -> CGSize {
+    private enum ContentMode {
+        case fill
+        case fit
+    }
+
+    private func placedTransform(
+        for track: AVAssetTrack,
+        destination: CGRect,
+        contentMode: ContentMode,
+        extraQuarterTurnsClockwise: Int = 0,
+        cropRectNormalized: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1)
+    ) async throws -> CGAffineTransform {
         let naturalSize = try await track.load(.naturalSize)
         let transform = try await track.load(.preferredTransform)
-        let transformed = naturalSize.applying(transform)
-        return CGSize(width: abs(transformed.width), height: abs(transformed.height))
+        let sourceRect = CGRect(origin: .zero, size: naturalSize).applying(transform)
+        let orientedSize = CGSize(width: abs(sourceRect.width), height: abs(sourceRect.height))
+        guard orientedSize.width > 0, orientedSize.height > 0 else { return .identity }
+
+        let normalizedOrientation = transform.concatenating(
+            CGAffineTransform(translationX: -sourceRect.minX, y: -sourceRect.minY)
+        )
+
+        let (quarterTurnTransform, rotatedSize) = clockwiseQuarterTurnTransform(
+            turns: extraQuarterTurnsClockwise,
+            sourceSize: orientedSize
+        )
+        let croppedRect = absoluteCropRect(
+            normalized: cropRectNormalized,
+            in: CGRect(origin: .zero, size: rotatedSize)
+        )
+
+        guard croppedRect.width > 0, croppedRect.height > 0 else { return .identity }
+
+        let scale: CGFloat
+        switch contentMode {
+        case .fill:
+            scale = max(destination.width / croppedRect.width, destination.height / croppedRect.height)
+        case .fit:
+            scale = min(destination.width / croppedRect.width, destination.height / croppedRect.height)
+        }
+        let scaled = CGSize(width: croppedRect.width * scale, height: croppedRect.height * scale)
+        let tx = destination.minX + (destination.width - scaled.width) / 2
+        let ty = destination.minY + (destination.height - scaled.height) / 2
+
+        return normalizedOrientation
+            .concatenating(quarterTurnTransform)
+            .concatenating(CGAffineTransform(translationX: -croppedRect.minX, y: -croppedRect.minY))
+            .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+            .concatenating(CGAffineTransform(translationX: tx, y: ty))
     }
 
-    private func scaleAndCenterTransform(source: CGSize, target: CGSize) -> CGAffineTransform {
-        guard source.width > 0, source.height > 0 else { return .identity }
-        let scale = max(target.width / source.width, target.height / source.height)
-        let scaled = CGSize(width: source.width * scale, height: source.height * scale)
-        let tx = (target.width - scaled.width) / 2
-        let ty = (target.height - scaled.height) / 2
-        return CGAffineTransform(scaleX: scale, y: scale).translatedBy(x: tx / scale, y: ty / scale)
+    private func clockwiseQuarterTurnTransform(turns: Int, sourceSize: CGSize) -> (CGAffineTransform, CGSize) {
+        let normalizedTurns = ((turns % 4) + 4) % 4
+        switch normalizedTurns {
+        case 1:
+            return (
+                CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: sourceSize.height, ty: 0),
+                CGSize(width: sourceSize.height, height: sourceSize.width)
+            )
+        case 2:
+            return (
+                CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: sourceSize.width, ty: sourceSize.height),
+                sourceSize
+            )
+        case 3:
+            return (
+                CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: sourceSize.width),
+                CGSize(width: sourceSize.height, height: sourceSize.width)
+            )
+        default:
+            return (.identity, sourceSize)
+        }
     }
 
-    private func scaleAndFitTransform(source: CGSize, destination: CGRect) -> CGAffineTransform {
-        guard source.width > 0, source.height > 0 else { return .identity }
-        let scale = min(destination.width / source.width, destination.height / source.height)
-        let scaled = CGSize(width: source.width * scale, height: source.height * scale)
-        let tx = destination.origin.x + (destination.width - scaled.width) / 2
-        let ty = destination.origin.y + (destination.height - scaled.height) / 2
-        return CGAffineTransform(scaleX: scale, y: scale).translatedBy(x: tx / scale, y: ty / scale)
+    private func absoluteCropRect(normalized: CGRect, in bounds: CGRect) -> CGRect {
+        let clamped = normalizedCrop(normalized)
+        return CGRect(
+            x: bounds.minX + clamped.minX * bounds.width,
+            y: bounds.minY + clamped.minY * bounds.height,
+            width: bounds.width * clamped.width,
+            height: bounds.height * clamped.height
+        )
+    }
+
+    private func normalizedCrop(_ rect: CGRect) -> CGRect {
+        let minSize: CGFloat = 0.05
+        var out = rect.standardized
+        out.origin.x = min(max(out.origin.x.isFinite ? out.origin.x : 0, 0), 1)
+        out.origin.y = min(max(out.origin.y.isFinite ? out.origin.y : 0, 0), 1)
+        out.size.width = min(max(out.size.width.isFinite ? out.size.width : 1, minSize), 1)
+        out.size.height = min(max(out.size.height.isFinite ? out.size.height : 1, minSize), 1)
+        if out.maxX > 1 { out.origin.x = max(0, 1 - out.width) }
+        if out.maxY > 1 { out.origin.y = max(0, 1 - out.height) }
+        return out
     }
 
     private func buildOverlayLayer(request: VideoExportRequest, renderSize: CGSize) -> CALayer {
@@ -505,7 +591,7 @@ struct DefaultVideoExportService: VideoExporting {
 
         for (index, sample) in samples.enumerated() {
             let x = ((sample.timeSeconds - minTime) / timeRange) * size.width
-            let y = size.height - ((sample.forceLbs - minForce) / forceRange) * size.height
+            let y = ((sample.forceLbs - minForce) / forceRange) * size.height
             let point = CGPoint(x: x, y: y)
             if index == 0 {
                 path.move(to: point)

@@ -27,6 +27,7 @@ struct VideoWorkspaceView: View {
     @State private var equipmentPlayer = AVPlayer()
     @State private var primaryTimeObserverToken: Any?
     @State private var lastScrubSeekUptime: TimeInterval = 0
+    @State private var isEditingEquipmentFrame = false
 
     private let syncService: VideoSyncing = DefaultVideoSyncService()
     private let exportService: VideoExporting = DefaultVideoExportService()
@@ -77,6 +78,13 @@ struct VideoWorkspaceView: View {
 
     private var trimUpperBound: Double {
         primaryDuration
+    }
+
+    private var equipmentCropBinding: Binding<CGRect> {
+        Binding(
+            get: { syncConfiguration.equipmentCropRectNormalized },
+            set: { syncConfiguration.equipmentCropRectNormalized = $0 }
+        )
     }
 
     private var timelineDomain: ClosedRange<Double> {
@@ -179,6 +187,7 @@ struct VideoWorkspaceView: View {
             reloadPlayers()
         }
         .onChange(of: syncConfiguration.equipmentVideoAssetID) { _, _ in
+            isEditingEquipmentFrame = false
             reloadPlayers()
         }
         .onChange(of: syncConfiguration.autoOffsetSeconds) { _, _ in
@@ -234,16 +243,48 @@ struct VideoWorkspaceView: View {
             switch layoutMode {
             case .sideBySide:
                 HStack(spacing: 12) {
-                    WorkspaceVideoPreview(player: primaryPlayer)
-                    if equipmentVideoAsset != nil {
-                        WorkspaceVideoPreview(player: equipmentPlayer)
+                    WorkspaceVideoPreview(
+                        player: primaryPlayer,
+                        videoSize: videoDisplaySize(for: primaryVideoAsset),
+                        rotationQuarterTurns: 0,
+                        cropRectNormalized: .constant(CGRect(x: 0, y: 0, width: 1, height: 1)),
+                        isEditingCrop: .constant(false),
+                        showEditingTools: false
+                    )
+                    if let equipmentAsset = equipmentVideoAsset {
+                        WorkspaceVideoPreview(
+                            player: equipmentPlayer,
+                            videoSize: videoDisplaySize(for: equipmentAsset),
+                            rotationQuarterTurns: syncConfiguration.normalizedEquipmentRotationQuarterTurns,
+                            cropRectNormalized: equipmentCropBinding,
+                            isEditingCrop: $isEditingEquipmentFrame,
+                            showEditingTools: true,
+                            onRotateClockwise: rotateEquipmentClockwise,
+                            onResetCrop: resetEquipmentCrop
+                        )
                     }
                 }
             case .pip:
                 ZStack(alignment: .bottomTrailing) {
-                    WorkspaceVideoPreview(player: primaryPlayer)
-                    if equipmentVideoAsset != nil {
-                        WorkspaceVideoPreview(player: equipmentPlayer)
+                    WorkspaceVideoPreview(
+                        player: primaryPlayer,
+                        videoSize: videoDisplaySize(for: primaryVideoAsset),
+                        rotationQuarterTurns: 0,
+                        cropRectNormalized: .constant(CGRect(x: 0, y: 0, width: 1, height: 1)),
+                        isEditingCrop: .constant(false),
+                        showEditingTools: false
+                    )
+                    if let equipmentAsset = equipmentVideoAsset {
+                        WorkspaceVideoPreview(
+                            player: equipmentPlayer,
+                            videoSize: videoDisplaySize(for: equipmentAsset),
+                            rotationQuarterTurns: syncConfiguration.normalizedEquipmentRotationQuarterTurns,
+                            cropRectNormalized: equipmentCropBinding,
+                            isEditingCrop: $isEditingEquipmentFrame,
+                            showEditingTools: true,
+                            onRotateClockwise: rotateEquipmentClockwise,
+                            onResetCrop: resetEquipmentCrop
+                        )
                             .frame(width: 320, height: 180)
                             .padding(12)
                     }
@@ -608,6 +649,26 @@ struct VideoWorkspaceView: View {
         )
     }
 
+    private func videoDisplaySize(for asset: Asset?) -> CGSize {
+        guard
+            let width = asset?.videoWidth,
+            let height = asset?.videoHeight,
+            width > 0,
+            height > 0
+        else {
+            return CGSize(width: 16, height: 9)
+        }
+        return CGSize(width: CGFloat(width), height: CGFloat(height))
+    }
+
+    private func rotateEquipmentClockwise() {
+        syncConfiguration.equipmentRotationQuarterTurns = (syncConfiguration.normalizedEquipmentRotationQuarterTurns + 1) % 4
+    }
+
+    private func resetEquipmentCrop() {
+        syncConfiguration.equipmentCropRectNormalized = CGRect(x: 0, y: 0, width: 1, height: 1)
+    }
+
     private func validSelectionOrEmpty(_ value: String?) -> String {
         guard let value, validVideoSelectionIDs.contains(value) else { return "" }
         return value
@@ -632,6 +693,9 @@ struct VideoWorkspaceView: View {
             syncConfiguration.autoOffsetSeconds = nil
         }
 
+        syncConfiguration.equipmentRotationQuarterTurns = syncConfiguration.normalizedEquipmentRotationQuarterTurns
+        syncConfiguration.equipmentCropRectNormalized = syncConfiguration.equipmentCropRectNormalized
+
         syncConfiguration.trimInSeconds = normalizedTrimIn
         syncConfiguration.trimOutSeconds = normalizedTrimOut
     }
@@ -639,10 +703,228 @@ struct VideoWorkspaceView: View {
 
 private struct WorkspaceVideoPreview: View {
     let player: AVPlayer
+    let videoSize: CGSize
+    let rotationQuarterTurns: Int
+    @Binding var cropRectNormalized: CGRect
+    @Binding var isEditingCrop: Bool
+    let showEditingTools: Bool
+    var onRotateClockwise: (() -> Void)? = nil
+    var onResetCrop: (() -> Void)? = nil
 
     var body: some View {
-        WorkspacePlayerView(player: player)
+        GeometryReader { geo in
+            let containerSize = geo.size
+            let fullVideoRect = aspectFitRect(
+                for: orientedVideoSize,
+                in: CGRect(origin: .zero, size: containerSize)
+            )
+            let cropRect = cropRectInView(fullVideoRect: fullVideoRect)
+
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.black.opacity(0.95))
+
+                if isEditingCrop {
+                    OrientedWorkspacePlayer(
+                        player: player,
+                        quarterTurns: rotationQuarterTurns
+                    )
+                    .frame(width: fullVideoRect.width, height: fullVideoRect.height)
+                    .position(x: fullVideoRect.midX, y: fullVideoRect.midY)
+
+                    CropEditingOverlay(
+                        fullVideoRect: fullVideoRect,
+                        cropRect: cropRect,
+                        onCropChanged: { newCrop in
+                            cropRectNormalized = normalizedRect(newCrop, in: fullVideoRect)
+                        }
+                    )
+                } else {
+                    let mapped = mappedVideoRect(fullVideoRect: fullVideoRect, cropRect: cropRect)
+                    OrientedWorkspacePlayer(
+                        player: player,
+                        quarterTurns: rotationQuarterTurns
+                    )
+                    .frame(width: mapped.width, height: mapped.height)
+                    .position(x: mapped.midX, y: mapped.midY)
+                }
+
+                if showEditingTools {
+                    HStack(spacing: 8) {
+                        Button(isEditingCrop ? "Done Crop" : "Edit Crop") {
+                            isEditingCrop.toggle()
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button {
+                            onRotateClockwise?()
+                        } label: {
+                            Label("Rotate 90°", systemImage: "rotate.right")
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button("Reset") {
+                            onResetCrop?()
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .padding(10)
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private var normalizedRotation: Int {
+        let mod = rotationQuarterTurns % 4
+        return mod < 0 ? mod + 4 : mod
+    }
+
+    private var orientedVideoSize: CGSize {
+        guard videoSize.width > 0, videoSize.height > 0 else { return CGSize(width: 16, height: 9) }
+        if normalizedRotation.isMultiple(of: 2) {
+            return videoSize
+        }
+        return CGSize(width: videoSize.height, height: videoSize.width)
+    }
+
+    private func cropRectInView(fullVideoRect: CGRect) -> CGRect {
+        let normalized = cropRectNormalized.standardized.clampedNormalized(minSize: 0.05)
+        return CGRect(
+            x: fullVideoRect.minX + normalized.minX * fullVideoRect.width,
+            y: fullVideoRect.minY + normalized.minY * fullVideoRect.height,
+            width: fullVideoRect.width * normalized.width,
+            height: fullVideoRect.height * normalized.height
+        )
+    }
+
+    private func normalizedRect(_ rect: CGRect, in fullVideoRect: CGRect) -> CGRect {
+        guard fullVideoRect.width > 0, fullVideoRect.height > 0 else {
+            return CGRect(x: 0, y: 0, width: 1, height: 1)
+        }
+        let x = (rect.minX - fullVideoRect.minX) / fullVideoRect.width
+        let y = (rect.minY - fullVideoRect.minY) / fullVideoRect.height
+        let w = rect.width / fullVideoRect.width
+        let h = rect.height / fullVideoRect.height
+        return CGRect(x: x, y: y, width: w, height: h).clampedNormalized(minSize: 0.05)
+    }
+
+    private func mappedVideoRect(fullVideoRect: CGRect, cropRect: CGRect) -> CGRect {
+        let safeCrop = cropRect.standardized
+        guard safeCrop.width > 0, safeCrop.height > 0 else { return fullVideoRect }
+        let scale = min(fullVideoRect.width / safeCrop.width, fullVideoRect.height / safeCrop.height)
+        let targetSize = CGSize(width: safeCrop.width * scale, height: safeCrop.height * scale)
+        let targetOrigin = CGPoint(
+            x: fullVideoRect.midX - targetSize.width / 2,
+            y: fullVideoRect.midY - targetSize.height / 2
+        )
+        return CGRect(
+            x: targetOrigin.x - (safeCrop.minX - fullVideoRect.minX) * scale,
+            y: targetOrigin.y - (safeCrop.minY - fullVideoRect.minY) * scale,
+            width: fullVideoRect.width * scale,
+            height: fullVideoRect.height * scale
+        )
+    }
+
+    private func aspectFitRect(for sourceSize: CGSize, in bounds: CGRect) -> CGRect {
+        guard sourceSize.width > 0, sourceSize.height > 0, bounds.width > 0, bounds.height > 0 else {
+            return bounds
+        }
+        let scale = min(bounds.width / sourceSize.width, bounds.height / sourceSize.height)
+        let fitted = CGSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
+        return CGRect(
+            x: bounds.midX - fitted.width / 2,
+            y: bounds.midY - fitted.height / 2,
+            width: fitted.width,
+            height: fitted.height
+        )
+    }
+}
+
+private struct OrientedWorkspacePlayer: View {
+    let player: AVPlayer
+    let quarterTurns: Int
+
+    var body: some View {
+        GeometryReader { geo in
+            let turns = normalizedTurns
+            let targetSize = geo.size
+            let baseSize = turns.isMultiple(of: 2)
+                ? targetSize
+                : CGSize(width: targetSize.height, height: targetSize.width)
+
+            WorkspacePlayerView(player: player)
+                .frame(width: baseSize.width, height: baseSize.height)
+                .rotationEffect(.degrees(Double(turns) * 90))
+                .position(x: targetSize.width / 2, y: targetSize.height / 2)
+        }
+        .clipped()
+    }
+
+    private var normalizedTurns: Int {
+        let mod = quarterTurns % 4
+        return mod < 0 ? mod + 4 : mod
+    }
+}
+
+private struct CropEditingOverlay: View {
+    let fullVideoRect: CGRect
+    let cropRect: CGRect
+    let onCropChanged: (CGRect) -> Void
+    @State private var dragStartPoint: CGPoint?
+    private let minimumCropPixels: CGFloat = 20
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Path { path in
+                path.addRect(fullVideoRect)
+                path.addRect(cropRect)
+            }
+            .fill(Color.black.opacity(0.45), style: FillStyle(eoFill: true))
+
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.orange, lineWidth: 2)
+                .frame(width: cropRect.width, height: cropRect.height)
+                .position(x: cropRect.midX, y: cropRect.midY)
+        }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    let point = clampPointToVideo(value.location)
+                    if dragStartPoint == nil {
+                        dragStartPoint = point
+                    }
+                    guard let start = dragStartPoint else { return }
+                    let rect = rectFromPoints(start, point).ensuringMinimumSize(
+                        minWidth: minimumCropPixels,
+                        minHeight: minimumCropPixels,
+                        inside: fullVideoRect
+                    )
+                    onCropChanged(rect)
+                }
+                .onEnded { _ in
+                    dragStartPoint = nil
+                }
+        )
+    }
+
+    private func clampPointToVideo(_ point: CGPoint) -> CGPoint {
+        CGPoint(
+            x: min(max(point.x, fullVideoRect.minX), fullVideoRect.maxX),
+            y: min(max(point.y, fullVideoRect.minY), fullVideoRect.maxY)
+        )
+    }
+
+    private func rectFromPoints(_ a: CGPoint, _ b: CGPoint) -> CGRect {
+        CGRect(
+            x: min(a.x, b.x),
+            y: min(a.y, b.y),
+            width: abs(b.x - a.x),
+            height: abs(b.y - a.y)
+        )
     }
 }
 
@@ -683,6 +965,53 @@ private final class WorkspacePlayerNSView: NSView {
         if playerLayer.player !== player {
             playerLayer.player = player
         }
+    }
+}
+
+private extension CGRect {
+    func clampedNormalized(minSize: CGFloat) -> CGRect {
+        let normalizedMin = min(max(minSize, 0), 1)
+        var rect = self.standardized
+        rect.origin.x = rect.origin.x.isFinite ? rect.origin.x : 0
+        rect.origin.y = rect.origin.y.isFinite ? rect.origin.y : 0
+        rect.size.width = rect.size.width.isFinite ? rect.size.width : 1
+        rect.size.height = rect.size.height.isFinite ? rect.size.height : 1
+
+        rect.origin.x = min(max(rect.origin.x, 0), 1)
+        rect.origin.y = min(max(rect.origin.y, 0), 1)
+        rect.size.width = min(max(rect.size.width, normalizedMin), 1)
+        rect.size.height = min(max(rect.size.height, normalizedMin), 1)
+
+        if rect.maxX > 1 {
+            rect.origin.x = max(0, 1 - rect.width)
+        }
+        if rect.maxY > 1 {
+            rect.origin.y = max(0, 1 - rect.height)
+        }
+        return rect
+    }
+
+    func ensuringMinimumSize(minWidth: CGFloat, minHeight: CGFloat, inside bounds: CGRect) -> CGRect {
+        var rect = self.standardized
+        rect.size.width = max(rect.width, minWidth)
+        rect.size.height = max(rect.height, minHeight)
+
+        if rect.maxX > bounds.maxX {
+            rect.origin.x = bounds.maxX - rect.width
+        }
+        if rect.maxY > bounds.maxY {
+            rect.origin.y = bounds.maxY - rect.height
+        }
+        if rect.minX < bounds.minX {
+            rect.origin.x = bounds.minX
+        }
+        if rect.minY < bounds.minY {
+            rect.origin.y = bounds.minY
+        }
+
+        rect.size.width = min(rect.width, bounds.width)
+        rect.size.height = min(rect.height, bounds.height)
+        return rect
     }
 }
 

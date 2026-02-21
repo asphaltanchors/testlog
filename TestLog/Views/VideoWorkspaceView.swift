@@ -158,6 +158,18 @@ struct VideoWorkspaceView: View {
         .scrollBounceBehavior(.basedOnSize)
         .padding(16)
         .navigationTitle("Video Workspace")
+        .focusable()
+        .onKeyPress(.space) {
+            if primaryVideoAsset == nil {
+                return .ignored
+            }
+            if isPlayingSynced {
+                pauseSyncedPlayback()
+            } else {
+                playSyncedFromTrimStart()
+            }
+            return .handled
+        }
         .onAppear {
             sanitizeWorkspaceState()
             reloadPlayers()
@@ -507,8 +519,10 @@ struct VideoWorkspaceView: View {
 
     private func playSyncedFromTrimStart() {
         seekPlayers(toPrimaryTime: scrubberTimeSeconds)
-        primaryPlayer.play()
-        if equipmentVideoAsset != nil {
+        if primaryPlayer.currentItem != nil {
+            primaryPlayer.play()
+        }
+        if equipmentVideoAsset != nil, equipmentPlayer.currentItem != nil {
             equipmentPlayer.play()
         }
         isPlayingSynced = true
@@ -529,21 +543,11 @@ struct VideoWorkspaceView: View {
     private func seekPlayers(toPrimaryTime primaryTime: Double) {
         let boundedPrimary = boundedSharedTime(primaryTime)
         let primaryClamped = clampedTime(boundedPrimary, for: primaryPlayer)
-        let primaryCMTime = CMTime(seconds: primaryClamped, preferredTimescale: 600)
-        primaryPlayer.seek(
-            to: primaryCMTime,
-            toleranceBefore: CMTime(value: 1, timescale: 60),
-            toleranceAfter: CMTime(value: 1, timescale: 60)
-        )
+        seek(player: primaryPlayer, to: primaryClamped)
 
         let secondaryRequested = max(0, boundedPrimary + syncConfiguration.effectiveOffsetSeconds)
         let secondaryClamped = clampedTime(secondaryRequested, for: equipmentPlayer)
-        let secondaryCMTime = CMTime(seconds: secondaryClamped, preferredTimescale: 600)
-        equipmentPlayer.seek(
-            to: secondaryCMTime,
-            toleranceBefore: CMTime(value: 1, timescale: 60),
-            toleranceAfter: CMTime(value: 1, timescale: 60)
-        )
+        seek(player: equipmentPlayer, to: secondaryClamped)
         scrubberTimeSeconds = boundedPrimary
     }
 
@@ -593,6 +597,17 @@ struct VideoWorkspaceView: View {
         return min(nonNegative, max(duration - 0.001, 0))
     }
 
+    private func seek(player: AVPlayer, to seconds: Double) {
+        guard let item = player.currentItem else { return }
+        if item.status == .failed { return }
+        let time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+        player.seek(
+            to: time,
+            toleranceBefore: CMTime(value: 1, timescale: 60),
+            toleranceAfter: CMTime(value: 1, timescale: 60)
+        )
+    }
+
     private func validSelectionOrEmpty(_ value: String?) -> String {
         guard let value, validVideoSelectionIDs.contains(value) else { return "" }
         return value
@@ -626,8 +641,48 @@ private struct WorkspaceVideoPreview: View {
     let player: AVPlayer
 
     var body: some View {
-        VideoPlayer(player: player)
-            .cornerRadius(10)
+        WorkspacePlayerView(player: player)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct WorkspacePlayerView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> WorkspacePlayerNSView {
+        let view = WorkspacePlayerNSView()
+        view.setPlayer(player)
+        return view
+    }
+
+    func updateNSView(_ nsView: WorkspacePlayerNSView, context: Context) {
+        nsView.setPlayer(player)
+    }
+}
+
+private final class WorkspacePlayerNSView: NSView {
+    private let playerLayer = AVPlayerLayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        playerLayer.videoGravity = .resizeAspect
+        layer?.addSublayer(playerLayer)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        playerLayer.frame = bounds
+    }
+
+    func setPlayer(_ player: AVPlayer) {
+        if playerLayer.player !== player {
+            playerLayer.player = player
+        }
     }
 }
 

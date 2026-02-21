@@ -14,6 +14,9 @@ import AppKit
 
 struct TestDetailView: View {
     @Bindable var test: PullTest
+#if os(macOS)
+    var onOpenVideoWorkspace: ((PullTest) -> Void)? = nil
+#endif
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Product.name) private var allProducts: [Product]
@@ -477,7 +480,11 @@ struct TestDetailView: View {
             }
 
             Button("Open Video Workspace") {
-                showingVideoWorkspace = true
+                if let onOpenVideoWorkspace {
+                    onOpenVideoWorkspace(test)
+                } else {
+                    showingVideoWorkspace = true
+                }
             }
             .disabled(test.videoAssets.isEmpty)
 

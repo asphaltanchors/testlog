@@ -42,6 +42,10 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showingProductEditor: Product?
     @State private var pendingProductDeletion: Product?
+#if os(macOS)
+    @State private var videoWorkspaceTestID: PersistentIdentifier?
+    @State private var previousColumnVisibility: NavigationSplitViewVisibility = .all
+#endif
     @AppStorage("sidebar.products.anchorsExpanded") private var isAnchorsExpanded = true
     @AppStorage("sidebar.products.adhesivesExpanded") private var isAdhesivesExpanded = true
 
@@ -50,6 +54,34 @@ struct ContentView: View {
     }
 
     var body: some View {
+        #if os(macOS)
+        ZStack {
+            if !isVideoWorkspaceMode {
+                mainSplitView
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            }
+
+            if let videoWorkspaceTest {
+                videoWorkspaceOverlay(for: videoWorkspaceTest)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .zIndex(1)
+            }
+        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.88), value: isVideoWorkspaceMode)
+        .onChange(of: isVideoWorkspaceMode) { _, isWorkspace in
+            let appearance: NSAppearance? = isWorkspace ? NSAppearance(named: .darkAqua) : nil
+            NSApp.mainWindow?.appearance = appearance
+        }
+        .onChange(of: allTests.count) { _, _ in
+            guard videoWorkspaceTestID != nil, videoWorkspaceTest == nil else { return }
+            closeVideoWorkspaceEditMode()
+        }
+        #else
+        mainSplitView
+        #endif
+    }
+
+    private var mainSplitView: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
         } content: {
@@ -325,7 +357,11 @@ struct ContentView: View {
             if selected.count > 1 {
                 BulkEditView(tests: selected)
             } else if let test = selected.first {
+                #if os(macOS)
+                TestDetailView(test: test, onOpenVideoWorkspace: openVideoWorkspace)
+                #else
                 TestDetailView(test: test)
+                #endif
             } else {
                 ContentUnavailableView("Select a Test", systemImage: "flask", description: Text("Choose a test to view its details."))
             }
@@ -382,6 +418,45 @@ struct ContentView: View {
         selectedSidebarItem = destination
         selectedSiteIDs = [site.persistentModelID]
     }
+
+    #if os(macOS)
+    private var videoWorkspaceTest: PullTest? {
+        guard let videoWorkspaceTestID else { return nil }
+        return allTests.first(where: { $0.persistentModelID == videoWorkspaceTestID })
+    }
+
+    private var isVideoWorkspaceMode: Bool {
+        videoWorkspaceTest != nil
+    }
+
+    private func openVideoWorkspace(_ test: PullTest) {
+        if videoWorkspaceTestID == nil {
+            previousColumnVisibility = columnVisibility
+        }
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+            videoWorkspaceTestID = test.persistentModelID
+            columnVisibility = .detailOnly
+        }
+    }
+
+    private func closeVideoWorkspaceEditMode() {
+        guard videoWorkspaceTestID != nil else { return }
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.9)) {
+            videoWorkspaceTestID = nil
+            columnVisibility = previousColumnVisibility
+        }
+    }
+
+    private func videoWorkspaceOverlay(for test: PullTest) -> some View {
+        VideoWorkspaceView(
+            test: test,
+            onDone: closeVideoWorkspaceEditMode,
+            usesImmersiveStyle: true
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.ignoresSafeArea())
+    }
+    #endif
 }
 
 #Preview {

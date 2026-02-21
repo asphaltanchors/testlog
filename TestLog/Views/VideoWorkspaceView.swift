@@ -8,10 +8,13 @@
 
 import AVKit
 import AVFoundation
+import AppKit
 import SwiftData
 import SwiftUI
 struct VideoWorkspaceView: View {
     @Bindable var test: PullTest
+    var onDone: (() -> Void)? = nil
+    var usesImmersiveStyle = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -27,6 +30,7 @@ struct VideoWorkspaceView: View {
     @State private var primaryTimeObserverToken: Any?
     @State private var lastScrubSeekUptime: TimeInterval = 0
     @State private var isEditingEquipmentFrame = false
+    @State private var exportModalState: ExportModalState?
 
     private let syncService: VideoSyncing = DefaultVideoSyncService()
     private let exportService: VideoExporting = DefaultVideoExportService()
@@ -129,6 +133,17 @@ struct VideoWorkspaceView: View {
         return min(max(rawOut, lower), trimUpperBound)
     }
 
+    private var isExportModalPresented: Binding<Bool> {
+        Binding(
+            get: { exportModalState != nil },
+            set: { isPresented in
+                if !isPresented, !isExportingVideo {
+                    exportModalState = nil
+                }
+            }
+        )
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
@@ -155,7 +170,45 @@ struct VideoWorkspaceView: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .padding(16)
-        .navigationTitle("Video Workspace")
+        .background {
+            if usesImmersiveStyle {
+                LinearGradient(
+                    colors: [
+                        Color.black,
+                        Color(red: 0.08, green: 0.08, blue: 0.1)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+            }
+        }
+        .navigationTitle(usesImmersiveStyle ? "" : "Video Workspace")
+        .toolbar {
+            if usesImmersiveStyle {
+                ToolbarItem(placement: .principal) {
+                    Label("Video Edit Mode", systemImage: "slider.horizontal.3")
+                        .font(.headline)
+                }
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button {
+                        beginExportFlow()
+                    } label: {
+                        Label("Export", systemImage: "square.and.arrow.up")
+                            .fontWeight(.semibold)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .disabled(isExportingVideo || primaryVideoAsset == nil)
+
+                    Button("Done") {
+                        closeWorkspace()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                }
+            }
+        }
         .focusable()
         .onKeyPress(.space) {
             if primaryVideoAsset == nil {
@@ -202,6 +255,12 @@ struct VideoWorkspaceView: View {
         } message: {
             Text(errorMessage ?? "Unknown error.")
         }
+        .sheet(isPresented: isExportModalPresented) {
+            exportModalContent
+                .frame(minWidth: 430)
+                .padding(20)
+                .interactiveDismissDisabled(isExportingVideo)
+        }
     }
 
     private var header: some View {
@@ -214,8 +273,24 @@ struct VideoWorkspaceView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Done") {
-                dismiss()
+            if !usesImmersiveStyle {
+                HStack(spacing: 10) {
+                    Button {
+                        beginExportFlow()
+                    } label: {
+                        Label("Export", systemImage: "square.and.arrow.up")
+                            .fontWeight(.semibold)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .disabled(isExportingVideo || primaryVideoAsset == nil)
+
+                    Button("Done") {
+                        closeWorkspace()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                }
             }
         }
     }
@@ -337,17 +412,12 @@ struct VideoWorkspaceView: View {
             }
             .disabled(isRunningAutoSync || test.videoAssets.count < 2)
 
-            if isRunningAutoSync || isExportingVideo {
+            if isRunningAutoSync {
                 ProgressView()
                     .scaleEffect(0.7)
             }
 
             Spacer()
-
-            Button("Export Composed Video") {
-                Task { await exportComposedVideo() }
-            }
-            .disabled(isExportingVideo || primaryVideoAsset == nil)
         }
         .overlay(alignment: .bottomLeading) {
             if let statusMessage {
@@ -356,6 +426,23 @@ struct VideoWorkspaceView: View {
                     .foregroundStyle(.secondary)
                     .padding(.top, 18)
             }
+        }
+    }
+
+    private func beginExportFlow() {
+        guard primaryVideoAsset != nil else {
+            errorMessage = VideoFeatureError.missingPrimaryVideo.localizedDescription
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.mpeg4Movie]
+        panel.nameFieldStringValue = "\(test.testID ?? "Test")_composed.mp4"
+        guard panel.runModal() == .OK, let outputURL = panel.url else { return }
+
+        exportModalState = .exporting(filename: outputURL.lastPathComponent)
+        Task {
+            await exportComposedVideo(to: outputURL)
         }
     }
 
@@ -386,16 +473,11 @@ struct VideoWorkspaceView: View {
         }
     }
 
-    private func exportComposedVideo() async {
+    private func exportComposedVideo(to outputURL: URL) async {
         guard let primary = primaryVideoAsset else {
             errorMessage = VideoFeatureError.missingPrimaryVideo.localizedDescription
             return
         }
-
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.mpeg4Movie]
-        panel.nameFieldStringValue = "\(test.testID ?? "Test")_composed.mp4"
-        guard panel.runModal() == .OK, let outputURL = panel.url else { return }
 
         isExportingVideo = true
         defer { isExportingVideo = false }
@@ -418,9 +500,76 @@ struct VideoWorkspaceView: View {
                 forceSamples: samples
             )
             try await exportService.exportComposedVideo(request: request)
-            statusMessage = "Export completed: \(outputURL.lastPathComponent)"
+            exportModalState = .completed(outputURL: outputURL)
         } catch {
-            errorMessage = error.localizedDescription
+            exportModalState = .failed(message: error.localizedDescription)
+        }
+    }
+
+    @ViewBuilder
+    private var exportModalContent: some View {
+        switch exportModalState {
+        case .exporting(let filename):
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Exporting Video")
+                    .font(.title3.weight(.semibold))
+                Text("Rendering \(filename). This can take a minute depending on video length.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                ProgressView()
+                    .controlSize(.regular)
+                HStack {
+                    Spacer()
+                    Button("Working...") {}
+                        .disabled(true)
+                }
+            }
+        case .completed(let outputURL):
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Export Complete")
+                    .font(.title3.weight(.semibold))
+                Text(outputURL.lastPathComponent)
+                    .font(.body.monospaced())
+                Text("Your composed video is ready. You can reveal it in Finder or finish and return to the test detail view.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([outputURL])
+                    }
+                    Spacer()
+                    Button("Done") {
+                        exportModalState = nil
+                        closeWorkspace()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Export Failed")
+                    .font(.title3.weight(.semibold))
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button("Close") {
+                        exportModalState = nil
+                    }
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+        case nil:
+            EmptyView()
+        }
+    }
+
+    private func closeWorkspace() {
+        if let onDone {
+            onDone()
+        } else {
+            dismiss()
         }
     }
 
@@ -589,6 +738,12 @@ struct VideoWorkspaceView: View {
         syncConfiguration.trimInSeconds = normalizedTrimIn
         syncConfiguration.trimOutSeconds = normalizedTrimOut
     }
+}
+
+private enum ExportModalState {
+    case exporting(filename: String)
+    case completed(outputURL: URL)
+    case failed(message: String)
 }
 
 private struct WorkspaceVideoPreview: View {

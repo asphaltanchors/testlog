@@ -386,5 +386,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: [PullTest.self, Product.self, Site.self, Location.self, TestMeasurement.self, Asset.self], inMemory: true)
+        .modelContainer(for: [PullTest.self, Product.self, Site.self, Location.self, TestMeasurement.self, Asset.self, VideoSyncConfiguration.self], inMemory: true)
 }

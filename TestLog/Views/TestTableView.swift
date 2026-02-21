@@ -120,7 +120,7 @@ struct TestTableView: View {
     }
 
     private func peakForce(for test: PullTest) -> String {
-        guard let peak = test.measurements.compactMap(\.force).max() else { return "—" }
+        guard let peak = test.peakForceLbs else { return "—" }
         return String(format: "%.0f", peak)
     }
 
@@ -241,16 +241,6 @@ struct TestTableView: View {
                 )
             }
 
-            duplicate.assets = source.assets.map { asset in
-                Asset(
-                    assetType: asset.assetType,
-                    filename: asset.filename,
-                    fileURL: asset.fileURL,
-                    createdAt: asset.createdAt,
-                    notes: asset.notes
-                )
-            }
-
             modelContext.insert(duplicate)
             selectedTestIDs = [duplicate.persistentModelID]
         }
@@ -290,6 +280,6 @@ private extension PullTest {
     var sortProductName: String { product?.name ?? "" }
     var sortAdhesiveName: String { adhesive?.name ?? "" }
     var sortHoleDiameter: String { holeDiameter?.rawValue ?? "" }
-    var sortPeakForce: Double { measurements.compactMap(\.force).max() ?? 0 }
+    var sortPeakForce: Double { peakForceLbs ?? 0 }
     var sortTestedDate: Date { testedDate ?? .distantPast }
 }

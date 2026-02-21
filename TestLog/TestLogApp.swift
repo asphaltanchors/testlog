@@ -18,6 +18,7 @@ struct TestLogApp: App {
             Site.self,
             Location.self,
             Asset.self,
+            VideoSyncConfiguration.self,
         ])
         let configurationName = "TestLog"
         let modelConfiguration = ModelConfiguration(configurationName, schema: schema, isStoredInMemoryOnly: false)

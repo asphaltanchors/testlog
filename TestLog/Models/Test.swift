@@ -10,6 +10,8 @@ import SwiftData
 
 @Model
 final class PullTest {
+    static let testerMaxMeasurementLabel = "Tester Max"
+
     var testID: String?
     var product: Product?
     var site: Site?
@@ -34,6 +36,9 @@ final class PullTest {
 
     @Relationship(deleteRule: .cascade)
     var assets: [Asset] = []
+
+    @Relationship(deleteRule: .cascade)
+    var videoSyncConfiguration: VideoSyncConfiguration?
 
     var computedCureDays: Int? {
         guard let installed = installedDate, let tested = testedDate else { return nil }
@@ -140,5 +145,62 @@ final class PullTest {
         } else if let failureBehavior, !behaviors.contains(failureBehavior) {
             self.failureBehavior = nil
         }
+    }
+
+    var videoAssets: [Asset] {
+        assets.filter { $0.assetType == .video }
+    }
+
+    var testerBinaryAsset: Asset? {
+        assets.first { $0.assetType == .testerData }
+    }
+
+    var hasValidAssetCardinality: Bool {
+        videoAssets.count <= 2 && assets.filter { $0.assetType == .testerData }.count <= 1
+    }
+
+    var validationIssues: [String] {
+        var issues: [String] = []
+        if videoAssets.count > 2 {
+            issues.append("Only up to 2 video files are allowed per test.")
+        }
+        if assets.filter({ $0.assetType == .testerData }).count > 1 {
+            issues.append("Only 1 tester binary file is allowed per test.")
+        }
+        return issues
+    }
+
+    var peakForceLbs: Double? {
+        measurements.compactMap(\.force).max()
+    }
+
+    func upsertTesterMaxMeasurement(forceLbs: Double) {
+        guard forceLbs.isFinite else { return }
+        let roundedForce = forceLbs.rounded()
+        if let measurement = testerMaxMeasurement {
+            measurement.force = roundedForce
+        } else {
+            let nextSortOrder = (measurements.map(\.sortOrder).max() ?? -1) + 1
+            let measurement = TestMeasurement(
+                test: self,
+                label: Self.testerMaxMeasurementLabel,
+                force: roundedForce,
+                displacement: nil,
+                timestamp: nil,
+                isManual: false,
+                sortOrder: nextSortOrder
+            )
+            measurements.append(measurement)
+        }
+    }
+
+    func removeTesterMaxMeasurement() {
+        if let measurement = testerMaxMeasurement {
+            measurements.removeAll { $0.persistentModelID == measurement.persistentModelID }
+        }
+    }
+
+    private var testerMaxMeasurement: TestMeasurement? {
+        measurements.first { $0.label == Self.testerMaxMeasurementLabel && $0.isManual == false }
     }
 }

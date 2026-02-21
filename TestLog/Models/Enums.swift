@@ -195,6 +195,17 @@ enum AssetType: String, Codable, CaseIterable, Identifiable {
     case photo = "Photo"
     case export = "Export"
     case document = "Document"
+    case testerData = "Tester Data"
+
+    var id: String { rawValue }
+}
+
+// MARK: - Video Role
+
+enum VideoRole: String, Codable, CaseIterable, Identifiable {
+    case anchorView = "Anchor View"
+    case equipmentView = "Equipment View"
+    case unassigned = "Unassigned"
 
     var id: String { rawValue }
 }

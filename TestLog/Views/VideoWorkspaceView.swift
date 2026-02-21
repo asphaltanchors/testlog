@@ -26,6 +26,7 @@ struct VideoWorkspaceView: View {
     @State private var primaryPlayer = AVPlayer()
     @State private var equipmentPlayer = AVPlayer()
     @State private var primaryTimeObserverToken: Any?
+    @State private var lastScrubSeekUptime: TimeInterval = 0
 
     private let syncService: VideoSyncing = DefaultVideoSyncService()
     private let exportService: VideoExporting = DefaultVideoExportService()
@@ -368,7 +369,7 @@ struct VideoWorkspaceView: View {
                 pauseSyncedPlayback()
             },
             onScrubChanged: { time in
-                seekPlayers(toPrimaryTime: time)
+                seekPlayersDuringScrub(toPrimaryTime: time)
             },
             onScrubEnded: { time in
                 isScrubbing = false
@@ -527,13 +528,30 @@ struct VideoWorkspaceView: View {
 
     private func seekPlayers(toPrimaryTime primaryTime: Double) {
         let boundedPrimary = boundedSharedTime(primaryTime)
-        let primaryCMTime = CMTime(seconds: boundedPrimary, preferredTimescale: 600)
-        primaryPlayer.seek(to: primaryCMTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        let primaryClamped = clampedTime(boundedPrimary, for: primaryPlayer)
+        let primaryCMTime = CMTime(seconds: primaryClamped, preferredTimescale: 600)
+        primaryPlayer.seek(
+            to: primaryCMTime,
+            toleranceBefore: CMTime(value: 1, timescale: 60),
+            toleranceAfter: CMTime(value: 1, timescale: 60)
+        )
 
-        let secondaryTime = max(0, boundedPrimary + syncConfiguration.effectiveOffsetSeconds)
-        let secondaryCMTime = CMTime(seconds: secondaryTime, preferredTimescale: 600)
-        equipmentPlayer.seek(to: secondaryCMTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        let secondaryRequested = max(0, boundedPrimary + syncConfiguration.effectiveOffsetSeconds)
+        let secondaryClamped = clampedTime(secondaryRequested, for: equipmentPlayer)
+        let secondaryCMTime = CMTime(seconds: secondaryClamped, preferredTimescale: 600)
+        equipmentPlayer.seek(
+            to: secondaryCMTime,
+            toleranceBefore: CMTime(value: 1, timescale: 60),
+            toleranceAfter: CMTime(value: 1, timescale: 60)
+        )
         scrubberTimeSeconds = boundedPrimary
+    }
+
+    private func seekPlayersDuringScrub(toPrimaryTime primaryTime: Double) {
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - lastScrubSeekUptime < 0.04 { return }
+        lastScrubSeekUptime = now
+        seekPlayers(toPrimaryTime: primaryTime)
     }
 
     private var sharedTimelineBounds: ClosedRange<Double> {
@@ -565,6 +583,14 @@ struct VideoWorkspaceView: View {
             primaryPlayer.removeTimeObserver(token)
             primaryTimeObserverToken = nil
         }
+    }
+
+    private func clampedTime(_ requested: Double, for player: AVPlayer) -> Double {
+        let nonNegative = max(0, requested)
+        guard let item = player.currentItem else { return nonNegative }
+        let duration = item.duration.seconds
+        guard duration.isFinite, duration > 0 else { return nonNegative }
+        return min(nonNegative, max(duration - 0.001, 0))
     }
 
     private func validSelectionOrEmpty(_ value: String?) -> String {

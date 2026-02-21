@@ -237,7 +237,8 @@ struct TestDetailView: View {
         }
         .sheet(isPresented: $showingVideoWorkspace) {
             VideoWorkspaceView(test: test)
-                .frame(minWidth: 980, minHeight: 700)
+                .frame(minWidth: 980, idealWidth: 1240, minHeight: 760, idealHeight: 920)
+                .presentationSizing(.page)
         }
         .onChange(of: showingImportReview) { _, newValue in
             if !newValue {

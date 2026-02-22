@@ -12,7 +12,7 @@ struct ProductTableView: View {
     let products: [Product]
     @Binding var selectedProductIDs: Set<PersistentIdentifier>
     let title: String
-    var onAddProduct: () -> Void
+    var onAddProduct: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var modelContext
     @State private var searchText = ""
@@ -60,9 +60,11 @@ struct ProductTableView: View {
             ToolbarItem {
                 Toggle("Show Archived", isOn: $showArchived)
             }
-            ToolbarItem {
-                Button(action: onAddProduct) {
-                    Label("Add Product", systemImage: "plus")
+            if let onAddProduct {
+                ToolbarItem {
+                    Button(action: onAddProduct) {
+                        Label("Add Product", systemImage: "plus")
+                    }
                 }
             }
         }

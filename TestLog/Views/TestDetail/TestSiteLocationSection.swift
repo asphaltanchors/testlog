@@ -19,11 +19,17 @@ struct TestSiteLocationSection: View {
             }
 
             if allSites.isEmpty {
+#if os(iOS)
                 Button("Create Main Pad Site") {
                     let site = Site(name: "Main Pad", isPrimaryPad: true, gridColumns: 50, gridRows: 50)
                     modelContext.insert(site)
                     test.site = site
                 }
+#else
+                Text("No sites available. Add one in Settings.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+#endif
             }
 
             if let location = test.location {

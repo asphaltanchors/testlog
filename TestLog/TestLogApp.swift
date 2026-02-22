@@ -17,5 +17,12 @@ struct TestLogApp: App {
             ContentView()
         }
         .modelContainer(sharedModelContainer)
+
+#if os(macOS)
+        Settings {
+            AppPreferencesView()
+                .modelContainer(sharedModelContainer)
+        }
+#endif
     }
 }

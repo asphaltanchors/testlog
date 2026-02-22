@@ -12,7 +12,7 @@ struct SiteTableView: View {
     let sites: [Site]
     @Binding var selectedSiteIDs: Set<PersistentIdentifier>
     let title: String
-    var onAddSite: () -> Void
+    var onAddSite: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var modelContext
     @Query private var allTests: [PullTest]
@@ -50,9 +50,11 @@ struct SiteTableView: View {
         .navigationTitle(title)
         .searchable(text: $searchText, prompt: "Search sites...")
         .toolbar {
-            ToolbarItem {
-                Button(action: onAddSite) {
-                    Label("Add Site", systemImage: "plus")
+            if let onAddSite {
+                ToolbarItem {
+                    Button(action: onAddSite) {
+                        Label("Add Site", systemImage: "plus")
+                    }
                 }
             }
         }

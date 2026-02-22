@@ -86,13 +86,21 @@ struct ContentView: View {
         if case .site(let siteID) = selectedSidebarItem,
            let site = allSites.first(where: { $0.persistentModelID == siteID }) {
             NavigationSplitView(columnVisibility: $columnVisibility) {
+                #if os(macOS)
                 sidebar.background(SplitColumnAutosave(key: "TestLog.2col"))
+                #else
+                sidebar
+                #endif
             } detail: {
                 SiteDetailView(site: site)
             }
         } else {
             NavigationSplitView(columnVisibility: $columnVisibility) {
+                #if os(macOS)
                 sidebar.background(SplitColumnAutosave(key: "TestLog.3col"))
+                #else
+                sidebar
+                #endif
             } content: {
                 contentView
             } detail: {
@@ -173,24 +181,28 @@ struct ContentView: View {
                 }
                 .tag(SidebarItem.productCategory(.adhesive))
 
+#if os(iOS)
                 Button {
                     createProductAndOpenEditor()
                 } label: {
                     Label("New Product", systemImage: "plus.circle")
                 }
                 .buttonStyle(.borderless)
+#endif
             }
 
             Section("Sites") {
                 ForEach(allSites, id: \.persistentModelID) { site in
                     siteSidebarRow(site)
                 }
+#if os(iOS)
                 Button {
                     createSite()
                 } label: {
                     Label("New Site", systemImage: "plus.circle")
                 }
                 .buttonStyle(.borderless)
+#endif
             }
 
             if allProducts.isEmpty {
@@ -276,6 +288,7 @@ struct ContentView: View {
                 title: "All Tests"
             )
         case .allProducts:
+#if os(iOS)
             ProductTableView(
                 products: allProducts,
                 selectedProductIDs: $selectedProductIDs,
@@ -287,7 +300,15 @@ struct ContentView: View {
                     )
                 }
             )
+#else
+            ProductTableView(
+                products: allProducts,
+                selectedProductIDs: $selectedProductIDs,
+                title: "All Products"
+            )
+#endif
         case .allSites:
+#if os(iOS)
             SiteTableView(
                 sites: allSites,
                 selectedSiteIDs: $selectedSiteIDs,
@@ -296,7 +317,15 @@ struct ContentView: View {
                     createSite(destination: .allSites)
                 }
             )
+#else
+            SiteTableView(
+                sites: allSites,
+                selectedSiteIDs: $selectedSiteIDs,
+                title: "All Sites"
+            )
+#endif
         case .productCategory(let category):
+#if os(iOS)
             ProductTableView(
                 products: allProducts.filter { $0.category == category },
                 selectedProductIDs: $selectedProductIDs,
@@ -308,6 +337,13 @@ struct ContentView: View {
                     )
                 }
             )
+#else
+            ProductTableView(
+                products: allProducts.filter { $0.category == category },
+                selectedProductIDs: $selectedProductIDs,
+                title: category == .anchor ? "Anchor Products" : "Adhesive Products"
+            )
+#endif
         case .status(let status):
             TestTableView(
                 tests: allTests.filter { $0.status == status },
@@ -400,6 +436,7 @@ struct ContentView: View {
         pendingProductDeletion = nil
     }
 
+    #if os(iOS)
     private func createProductAndOpenEditor(
         preferredCategory: ProductCategory = .anchor,
         destination: SidebarItem = .allProducts
@@ -423,6 +460,7 @@ struct ContentView: View {
         selectedSidebarItem = destination
         selectedSiteIDs = [site.persistentModelID]
     }
+    #endif
 
     #if os(macOS)
     private var videoWorkspaceTest: PullTest? {

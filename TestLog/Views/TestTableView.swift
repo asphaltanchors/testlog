@@ -165,6 +165,7 @@ struct TestTableView: View {
                     }
             }
         }
+        .onMoveCommand(perform: handleMacMoveCommand)
     }
 
     private func peakForce(for test: PullTest) -> String {
@@ -209,6 +210,50 @@ struct TestTableView: View {
                 previousMacSelection = selectedTestIDs
             }
         )
+    }
+
+    private func handleMacMoveCommand(_ direction: MoveCommandDirection) {
+        let orderedIDs = sortedFilteredTests.map(\.persistentModelID)
+        guard !orderedIDs.isEmpty else { return }
+
+        switch direction {
+        case .down:
+            guard let currentID = selectedTestIDs.first else {
+                selectedTestIDs = [orderedIDs[0]]
+                previousMacSelection = selectedTestIDs
+                return
+            }
+
+            guard let currentIndex = orderedIDs.firstIndex(of: currentID) else {
+                selectedTestIDs = [orderedIDs[0]]
+                previousMacSelection = selectedTestIDs
+                return
+            }
+
+            let nextIndex = min(currentIndex + 1, orderedIDs.count - 1)
+            selectedTestIDs = [orderedIDs[nextIndex]]
+            previousMacSelection = selectedTestIDs
+
+        case .up:
+            guard let currentID = selectedTestIDs.first else {
+                selectedTestIDs = [orderedIDs[orderedIDs.count - 1]]
+                previousMacSelection = selectedTestIDs
+                return
+            }
+
+            guard let currentIndex = orderedIDs.firstIndex(of: currentID) else {
+                selectedTestIDs = [orderedIDs[orderedIDs.count - 1]]
+                previousMacSelection = selectedTestIDs
+                return
+            }
+
+            let previousIndex = max(currentIndex - 1, 0)
+            selectedTestIDs = [orderedIDs[previousIndex]]
+            previousMacSelection = selectedTestIDs
+
+        default:
+            break
+        }
     }
 
     private static func findTableView(from view: NSView?) -> NSTableView? {

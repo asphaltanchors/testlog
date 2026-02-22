@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct TestIdentitySection: View {
     @Bindable var test: PullTest
@@ -16,13 +17,16 @@ struct TestIdentitySection: View {
 
         Section("Notes") {
             TextField(
-                "Notes",
+                "",
                 text: Binding(
                     get: { test.notes ?? "" },
                     set: { test.notes = $0.isEmpty ? nil : $0 }
                 ),
+                prompt: Text("Notes"),
                 axis: .vertical
             )
+            .labelsHidden()
+            .multilineTextAlignment(.leading)
             .lineLimit(3...6)
         }
     }

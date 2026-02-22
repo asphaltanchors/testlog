@@ -105,6 +105,11 @@ struct TestDetailView: View {
             test.normalizeFailureSelections()
             test.location?.site = test.site
         }
+        .onChange(of: test.persistentModelID) { _, _ in
+            test.syncFailureFieldsFromModeIfNeeded()
+            test.normalizeFailureSelections()
+            test.location?.site = test.site
+        }
         .onChange(of: test.testType) { _, _ in
             test.normalizeFailureSelections()
         }

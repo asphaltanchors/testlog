@@ -24,6 +24,10 @@ struct TestTableView: View {
 #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 #endif
+#if os(macOS)
+    @State private var previousMacSelection: Set<PersistentIdentifier> = []
+    @State private var tableMouseMonitor: Any?
+#endif
 
     private var filteredTests: [PullTest] {
         let base = tests
@@ -60,13 +64,51 @@ struct TestTableView: View {
                 }
             }
         }
+#if os(macOS)
+        .onAppear {
+            guard tableMouseMonitor == nil else { return }
+            tableMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { event in
+                guard
+                    let window = event.window ?? NSApp.keyWindow,
+                    let contentView = window.contentView
+                else {
+                    return event
+                }
+
+                let locationInContent = contentView.convert(event.locationInWindow, from: nil)
+                let hitView = contentView.hitTest(locationInContent)
+                let hitTable = Self.findTableView(from: hitView)
+                let responder = window.firstResponder
+                let responderName = responder.map { String(describing: type(of: $0)) } ?? "nil"
+
+                if hitTable != nil, responderName.contains("FieldEditor") {
+                    window.makeFirstResponder(nil)
+                    // The original click is consumed by the focus resignation —
+                    // the table treats it as "become first responder", not
+                    // "select row". Re-post so the table gets a clean click.
+                    DispatchQueue.main.async {
+                        NSApp.sendEvent(event)
+                    }
+                    return nil
+                }
+
+                return event
+            }
+        }
+        .onDisappear {
+            if let tableMouseMonitor {
+                NSEvent.removeMonitor(tableMouseMonitor)
+                self.tableMouseMonitor = nil
+            }
+        }
+#endif
     }
 
     // MARK: - macOS Table
 
     #if os(macOS)
     private var macTable: some View {
-        Table(of: PullTest.self, selection: $selectedTestIDs, sortOrder: $sortOrder) {
+        Table(of: PullTest.self, selection: macSelectionBinding, sortOrder: $sortOrder) {
             TableColumn("ID", value: \.sortTestID) { test in
                 Text(test.testID ?? "—")
                     .fontWeight(.medium)
@@ -127,6 +169,41 @@ struct TestTableView: View {
     private func testedDateText(for test: PullTest) -> String {
         guard let date = test.testedDate else { return "—" }
         return date.formatted(.dateTime.month(.abbreviated).day())
+    }
+
+    private var macSelectionBinding: Binding<Set<PersistentIdentifier>> {
+        Binding(
+            get: { selectedTestIDs },
+            set: { newValue in
+                let modifiers = NSApp.currentEvent?.modifierFlags ?? []
+                let isMultiSelectIntent = modifiers.contains(.command) || modifiers.contains(.shift)
+
+                if !isMultiSelectIntent, newValue.count > 1 {
+                    if let newest = newValue.subtracting(previousMacSelection).first {
+                        selectedTestIDs = [newest]
+                    } else if let fallback = newValue.first {
+                        selectedTestIDs = [fallback]
+                    } else {
+                        selectedTestIDs = newValue
+                    }
+                } else {
+                    selectedTestIDs = newValue
+                }
+
+                previousMacSelection = selectedTestIDs
+            }
+        )
+    }
+
+    private static func findTableView(from view: NSView?) -> NSTableView? {
+        var node = view
+        while let current = node {
+            if let table = current as? NSTableView {
+                return table
+            }
+            node = current.superview
+        }
+        return nil
     }
     #endif
 
@@ -194,6 +271,9 @@ struct TestTableView: View {
             )
             modelContext.insert(test)
             selectedTestIDs = [test.persistentModelID]
+#if os(macOS)
+            previousMacSelection = selectedTestIDs
+#endif
         }
     }
 
@@ -243,12 +323,18 @@ struct TestTableView: View {
 
             modelContext.insert(duplicate)
             selectedTestIDs = [duplicate.persistentModelID]
+#if os(macOS)
+            previousMacSelection = selectedTestIDs
+#endif
         }
     }
 
     private func deleteTest(_ test: PullTest) {
         withAnimation {
             selectedTestIDs.remove(test.persistentModelID)
+#if os(macOS)
+            previousMacSelection = selectedTestIDs
+#endif
             modelContext.delete(test)
         }
     }

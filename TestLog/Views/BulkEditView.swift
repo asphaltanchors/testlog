@@ -10,8 +10,30 @@ import SwiftData
 
 struct BulkEditView: View {
     let tests: [PullTest]
-    @Environment(\.modelContext) private var modelContext
     @Query(sort: \Product.name) private var allProducts: [Product]
+    @State private var installationEnabled: Bool
+    @State private var testingEnabled: Bool
+    @State private var installationMixed: Bool
+    @State private var testingMixed: Bool
+    @State private var installationDate: Date
+    @State private var testingDate: Date
+
+    init(tests: [PullTest]) {
+        self.tests = tests
+        let installedDates = tests.compactMap(\.installedDate)
+        let testedDates = tests.compactMap(\.testedDate)
+        let installedDateValues = Set(installedDates.map { Calendar.current.startOfDay(for: $0) })
+        let testedDateValues = Set(testedDates.map { Calendar.current.startOfDay(for: $0) })
+        let installedStatusMixed = !tests.isEmpty && installedDates.count > 0 && installedDates.count < tests.count
+        let testedStatusMixed = !tests.isEmpty && testedDates.count > 0 && testedDates.count < tests.count
+
+        _installationEnabled = State(initialValue: !installedDates.isEmpty)
+        _testingEnabled = State(initialValue: !testedDates.isEmpty)
+        _installationMixed = State(initialValue: installedStatusMixed || installedDateValues.count > 1)
+        _testingMixed = State(initialValue: testedStatusMixed || testedDateValues.count > 1)
+        _installationDate = State(initialValue: installedDates.first ?? .now)
+        _testingDate = State(initialValue: testedDates.first ?? .now)
+    }
 
     private var anchorProducts: [Product] {
         allProducts.filter { $0.category == .anchor && $0.isActive }
@@ -55,6 +77,50 @@ struct BulkEditView: View {
                     applyToAll { $0.adhesive = nil }
                 }
                 .foregroundStyle(.secondary)
+            }
+
+            Section("Dates & Conditions") {
+                HStack {
+                    Toggle("Installed", isOn: Binding(
+                        get: { installationEnabled },
+                        set: { newValue in
+                            installationEnabled = newValue
+                            installationMixed = false
+                            setInstallationEnabled(newValue)
+                        }
+                    ))
+                    if installationEnabled {
+                        DatePicker("", selection: $installationDate, displayedComponents: [.date])
+                            .labelsHidden()
+                    }
+                }
+                .opacity(installationMixed ? 0.55 : 1.0)
+                .onChange(of: installationDate) { _, newValue in
+                    guard installationEnabled else { return }
+                    installationMixed = false
+                    applyInstalledStatus(with: newValue)
+                }
+
+                HStack {
+                    Toggle("Tested", isOn: Binding(
+                        get: { testingEnabled },
+                        set: { newValue in
+                            testingEnabled = newValue
+                            testingMixed = false
+                            setTestingEnabled(newValue)
+                        }
+                    ))
+                    if testingEnabled {
+                        DatePicker("", selection: $testingDate, displayedComponents: [.date])
+                            .labelsHidden()
+                    }
+                }
+                .opacity(testingMixed ? 0.55 : 1.0)
+                .onChange(of: testingDate) { _, newValue in
+                    guard testingEnabled else { return }
+                    testingMixed = false
+                    applyTestedStatus(with: newValue)
+                }
             }
 
             Section("Set Anchor Material") {
@@ -112,12 +178,65 @@ struct BulkEditView: View {
             summary = "Mixed (\(unique.count) values)"
         }
         return HStack {
-            Text("Current:")
+            Text("Current \(label):")
                 .foregroundStyle(.secondary)
             Text(summary)
                 .foregroundColor(unique.count == 1 ? .primary : .orange)
         }
         .font(.caption)
+    }
+
+    private func setInstallationEnabled(_ enabled: Bool) {
+        if enabled {
+            applyInstalledStatus(with: installationDate)
+            return
+        }
+
+        clearInstalledStatus()
+        testingEnabled = false
+    }
+
+    private func setTestingEnabled(_ enabled: Bool) {
+        if enabled {
+            installationEnabled = true
+            applyTestedStatus(with: testingDate)
+            return
+        }
+
+        clearTestedStatus()
+    }
+
+    private func applyInstalledStatus(with date: Date) {
+        applyToAll { test in
+            test.installedDate = date
+            if let testedDate = test.testedDate, testedDate < date {
+                test.testedDate = date
+            }
+        }
+    }
+
+    private func clearInstalledStatus() {
+        applyToAll { test in
+            test.installedDate = nil
+            test.testedDate = nil
+        }
+    }
+
+    private func applyTestedStatus(with date: Date) {
+        applyToAll { test in
+            if let installedDate = test.installedDate, installedDate > date {
+                test.installedDate = date
+            } else if test.installedDate == nil {
+                test.installedDate = date
+            }
+            test.testedDate = date
+        }
+    }
+
+    private func clearTestedStatus() {
+        applyToAll { test in
+            test.testedDate = nil
+        }
     }
 
     private func bulkEnumButtons<E: RawRepresentable & CaseIterable & Identifiable>(

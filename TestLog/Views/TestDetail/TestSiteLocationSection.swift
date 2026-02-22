@@ -28,13 +28,19 @@ struct TestSiteLocationSection: View {
 
             if let location = test.location {
                 locationEditor(location)
-            } else {
-                Button("Add Location") {
-                    let location = Location(site: test.site)
-                    modelContext.insert(location)
-                    test.location = location
-                }
             }
+        }
+        .onAppear {
+            ensureLocationExists()
+            test.location?.site = test.site
+        }
+        .onChange(of: test.persistentModelID) { _, _ in
+            ensureLocationExists()
+            test.location?.site = test.site
+        }
+        .onChange(of: test.site?.persistentModelID) { _, _ in
+            ensureLocationExists()
+            test.location?.site = test.site
         }
     }
 
@@ -73,10 +79,6 @@ struct TestSiteLocationSection: View {
                 row: location.gridRow
             ) {
                 LabeledContent("Coordinate", value: coordinate)
-            } else {
-                Text("Use spreadsheet-style coordinates like A1, L50, or AX15.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             if
@@ -103,11 +105,14 @@ struct TestSiteLocationSection: View {
                     .foregroundStyle(.orange)
             }
 
-            Button("Clear Location", role: .destructive) {
-                modelContext.delete(location)
-                test.location = nil
-            }
         }
+    }
+
+    private func ensureLocationExists() {
+        guard test.location == nil else { return }
+        let location = Location(site: test.site)
+        modelContext.insert(location)
+        test.location = location
     }
 
     private var siteGridColumns: Int {

@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct TestProductsSection: View {
     @Bindable var test: PullTest
@@ -7,19 +8,25 @@ struct TestProductsSection: View {
 
     var body: some View {
         Section("Product") {
-            Picker("Anchor", selection: $test.product) {
-                Text("None").tag(nil as Product?)
+            Picker("Anchor", selection: Binding<PersistentIdentifier?>(
+                get: { test.product?.persistentModelID },
+                set: { id in test.product = anchorProducts.first { $0.persistentModelID == id } }
+            )) {
+                Text("None").tag(nil as PersistentIdentifier?)
                 ForEach(anchorProducts, id: \.persistentModelID) { product in
                     Text(productLabel(product))
-                        .tag(product as Product?)
+                        .tag(product.persistentModelID as PersistentIdentifier?)
                 }
             }
 
-            Picker("Adhesive", selection: $test.adhesive) {
-                Text("None").tag(nil as Product?)
+            Picker("Adhesive", selection: Binding<PersistentIdentifier?>(
+                get: { test.adhesive?.persistentModelID },
+                set: { id in test.adhesive = adhesiveProducts.first { $0.persistentModelID == id } }
+            )) {
+                Text("None").tag(nil as PersistentIdentifier?)
                 ForEach(adhesiveProducts, id: \.persistentModelID) { product in
                     Text(productLabel(product))
-                        .tag(product as Product?)
+                        .tag(product.persistentModelID as PersistentIdentifier?)
                 }
             }
         }

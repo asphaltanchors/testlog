@@ -30,6 +30,7 @@ final class PullTest {
     var failureBehavior: FailureBehavior?
     var failureMode: FailureMode?
     var notes: String?
+    var isValid: Bool = true
 
     @Relationship(deleteRule: .cascade)
     var measurements: [TestMeasurement] = []
@@ -83,7 +84,8 @@ final class PullTest {
         failureMechanism: FailureMechanism? = nil,
         failureBehavior: FailureBehavior? = nil,
         failureMode: FailureMode? = nil,
-        notes: String? = nil
+        notes: String? = nil,
+        isValid: Bool = true
     ) {
         self.testID = testID
         self.product = product
@@ -103,6 +105,7 @@ final class PullTest {
         self.failureBehavior = failureBehavior
         self.failureMode = failureMode
         self.notes = notes
+        self.isValid = isValid
     }
 
     func syncFailureFieldsFromModeIfNeeded() {

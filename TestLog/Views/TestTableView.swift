@@ -116,9 +116,14 @@ struct TestTableView: View {
             .width(min: 50, ideal: 65)
 
             TableColumn("Status", value: \.sortStatus) { test in
-                StatusBadge(status: test.status)
+                HStack(spacing: 4) {
+                    StatusBadge(status: test.status)
+                    if !test.isValid {
+                        InvalidBadge()
+                    }
+                }
             }
-            .width(min: 75, ideal: 85)
+            .width(min: 75, ideal: 130)
 
             TableColumn("Product", value: \.sortProductName) { test in
                 Text(test.product?.name ?? "—")

@@ -28,6 +28,8 @@ struct TestIdentitySection: View {
             .labelsHidden()
             .multilineTextAlignment(.leading)
             .lineLimit(3...6)
+
+            Toggle("Valid", isOn: $test.isValid)
         }
     }
 }

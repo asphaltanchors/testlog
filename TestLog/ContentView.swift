@@ -81,14 +81,28 @@ struct ContentView: View {
         #endif
     }
 
-    private var mainSplitView: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            sidebar
-        } content: {
-            contentView
-        } detail: {
-            detailView
+    @ViewBuilder
+    private var splitViewBody: some View {
+        if case .site(let siteID) = selectedSidebarItem,
+           let site = allSites.first(where: { $0.persistentModelID == siteID }) {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                sidebar
+            } detail: {
+                SiteDetailView(site: site)
+            }
+        } else {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                sidebar
+            } content: {
+                contentView
+            } detail: {
+                detailView
+            }
         }
+    }
+
+    private var mainSplitView: some View {
+        splitViewBody
         .sheet(item: $showingProductEditor) { product in
             NavigationStack {
                 ProductDetailView(product: product)
@@ -313,12 +327,7 @@ struct ContentView: View {
             }
         case .site(let siteID):
             if let site = allSites.first(where: { $0.persistentModelID == siteID }) {
-                let related = allTests.filter { $0.site?.persistentModelID == siteID }
-                TestTableView(
-                    tests: related,
-                    selectedTestIDs: $selectedTestIDs,
-                    title: site.name
-                )
+                SiteDetailView(site: site)
             } else {
                 ContentUnavailableView("Site Not Found", systemImage: "map")
             }
@@ -346,12 +355,8 @@ struct ContentView: View {
             } else {
                 ContentUnavailableView("Select a Site", systemImage: "map", description: Text("Choose a site to view its details."))
             }
-        case .site(let siteID):
-            if let site = allSites.first(where: { $0.persistentModelID == siteID }) {
-                SiteDetailView(site: site)
-            } else {
-                ContentUnavailableView("Site Not Found", systemImage: "map")
-            }
+        case .site:
+            EmptyView()
         default:
             let selected = selectedTests
             if selected.count > 1 {

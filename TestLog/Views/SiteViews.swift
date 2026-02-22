@@ -256,19 +256,9 @@ struct SiteDetailView: View {
                 .lineLimit(2...5)
             }
 
-            Section("Tests (\(relatedTests.count))") {
-                if relatedTests.isEmpty {
-                    Text("No tests mapped to this site yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(relatedTests, id: \.persistentModelID) { test in
-                        HStack {
-                            Text(test.testID ?? "—")
-                            Spacer()
-                            StatusBadge(status: test.status)
-                        }
-                    }
-                }
+            Section("Test Grid (\(relatedTests.count) mapped)") {
+                SiteGridView(site: site, tests: relatedTests)
+                    .frame(height: 420)
             }
         }
         .navigationTitle(site.name)
@@ -289,6 +279,119 @@ struct SiteDetailView: View {
             }
         } message: {
             Text("This will delete \(site.name). Tests will lose their site reference.")
+        }
+    }
+}
+
+private struct SiteGridView: View {
+    let site: Site
+    let tests: [PullTest]
+
+    private var testByPosition: [String: PullTest] {
+        var dict: [String: PullTest] = [:]
+        for test in tests {
+            guard let key = GridCoordinateCodec.coordinateKey(
+                column: test.location?.gridColumn,
+                row: test.location?.gridRow
+            ) else { continue }
+            dict[key] = test
+        }
+        return dict
+    }
+
+    static func columnLabel(for index: Int) -> String {
+        var result = ""
+        var n = index
+        while n > 0 {
+            n -= 1
+            result = String(UnicodeScalar(65 + (n % 26))!) + result
+            n /= 26
+        }
+        return result
+    }
+
+    var body: some View {
+        if let cols = site.gridColumns, let rows = site.gridRows, cols > 0, rows > 0 {
+            gridContent(cols: cols, rows: rows)
+        } else {
+            Text("Configure grid dimensions in Site Info to see the grid.")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func gridContent(cols: Int, rows: Int) -> some View {
+        let lookup = testByPosition
+        ScrollView([.horizontal, .vertical]) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Column header row
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: 28, height: 20)
+                    ForEach(1...cols, id: \.self) { c in
+                        Text(Self.columnLabel(for: c))
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, height: 20)
+                    }
+                }
+                .background(Color.secondary.opacity(0.08))
+
+                // Data rows
+                ForEach(1...rows, id: \.self) { row in
+                    HStack(spacing: 0) {
+                        Text("\(row)")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 36)
+                            .background(Color.secondary.opacity(0.08))
+
+                        ForEach(1...cols, id: \.self) { c in
+                            SiteGridCell(test: lookup["\(c)-\(row)"])
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct SiteGridCell: View {
+    let test: PullTest?
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(fillColor)
+                .overlay(Rectangle().stroke(Color.secondary.opacity(0.15), lineWidth: 0.5))
+
+            if let test {
+                Text(test.testID ?? "?")
+                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                    .foregroundStyle(labelColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .padding(2)
+            }
+        }
+        .frame(width: 36, height: 36)
+    }
+
+    private var fillColor: Color {
+        guard let test else { return Color.secondary.opacity(0.06) }
+        switch test.status {
+        case .planned:   return .blue.opacity(0.2)
+        case .installed: return .orange.opacity(0.2)
+        case .completed: return .green.opacity(0.2)
+        }
+    }
+
+    private var labelColor: Color {
+        guard let test else { return .secondary }
+        switch test.status {
+        case .planned:   return .blue
+        case .installed: return .orange
+        case .completed: return .green
         }
     }
 }

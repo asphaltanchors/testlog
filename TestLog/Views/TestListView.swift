@@ -19,6 +19,9 @@ struct TestRowView: View {
                 Text(test.testID ?? "New Test")
                     .font(.headline)
                 Spacer()
+                if !test.isValid {
+                    InvalidBadge()
+                }
                 StatusBadge(status: test.status)
             }
             HStack(spacing: 8) {
@@ -54,6 +57,21 @@ struct TestRowView: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Invalid Badge
+
+struct InvalidBadge: View {
+    var body: some View {
+        Text("Invalid")
+            .font(.caption2)
+            .fontWeight(.medium)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.red.opacity(0.15))
+            .foregroundStyle(.red)
+            .clipShape(Capsule())
     }
 }
 

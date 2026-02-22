@@ -14,6 +14,9 @@ struct OptionalDatePicker: View {
     var body: some View {
         HStack {
             Toggle(title, isOn: $isEnabled)
+                .onChange(of: selection) { _, newValue in
+                    isEnabled = newValue != nil
+                }
                 .onChange(of: isEnabled) { _, newValue in
                     if newValue && selection == nil {
                         selection = Date()

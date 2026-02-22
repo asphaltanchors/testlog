@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import CryptoKit
 
 struct TestDetailView: View {
     @Bindable var test: PullTest
@@ -24,6 +25,7 @@ struct TestDetailView: View {
     @State private var showingVideoWorkspace = false
     @State private var isImportingCandidates = false
     @State private var importStatusMessage: String?
+    @State private var duplicateTesterWarning: String?
 #endif
 
     @State private var mediaErrorMessage: String?
@@ -198,6 +200,26 @@ struct TestDetailView: View {
         } message: {
             Text(mediaErrorMessage ?? "Unknown error.")
         }
+#if os(macOS)
+        .alert(
+            "File Already Used",
+            isPresented: Binding(
+                get: { duplicateTesterWarning != nil },
+                set: { if !$0 { duplicateTesterWarning = nil } }
+            )
+        ) {
+            Button("Attach Anyway") {
+                duplicateTesterWarning = nil
+                proceedWithImport()
+            }
+            Button("Cancel", role: .cancel) {
+                duplicateTesterWarning = nil
+                pendingImportCandidates = []
+            }
+        } message: {
+            Text("\(duplicateTesterWarning ?? "") is already attached to another test. Attach it to this test as well?")
+        }
+#endif
     }
 }
 
@@ -206,13 +228,43 @@ private extension TestDetailView {
     func handleFileImportSelection(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
-            pendingImportCandidates = importCoordinator.buildCandidates(
+            let candidates = importCoordinator.buildCandidates(
                 urls: urls,
                 existingVideos: test.videoAssets
             )
-            showingImportReview = !pendingImportCandidates.isEmpty
+            guard !candidates.isEmpty else { return }
+            pendingImportCandidates = candidates
+
+            // Warn if any tester data file is already attached to a different test (by SHA256)
+            let dupeNames = candidates.compactMap { candidate -> String? in
+                guard candidate.selectedAssetType == .testerData else { return nil }
+                guard let hash = sha256(of: candidate.sourceURL) else { return nil }
+                let usedElsewhere = allAssets.contains {
+                    $0.assetType == .testerData &&
+                    $0.test?.persistentModelID != test.persistentModelID &&
+                    $0.checksumSHA256 == hash
+                }
+                return usedElsewhere ? candidate.sourceURL.lastPathComponent : nil
+            }
+            if !dupeNames.isEmpty {
+                duplicateTesterWarning = dupeNames.joined(separator: ", ")
+            } else {
+                proceedWithImport()
+            }
         case .failure(let error):
             mediaErrorMessage = error.localizedDescription
+        }
+    }
+
+    func proceedWithImport() {
+        // If all files are tester data, skip the review sheet and import directly
+        if pendingImportCandidates.allSatisfy({ $0.selectedAssetType == .testerData }) {
+            isImportingCandidates = true
+            Task {
+                await importPendingCandidates()
+            }
+        } else {
+            showingImportReview = true
         }
     }
 
@@ -240,6 +292,14 @@ private extension TestDetailView {
             mediaErrorMessage = error.localizedDescription
             importStatusMessage = "Import failed."
         }
+    }
+
+    func sha256(of url: URL) -> String? {
+        let started = url.startAccessingSecurityScopedResource()
+        defer { if started { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let digest = CryptoKit.SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     func removeAsset(_ asset: Asset) {

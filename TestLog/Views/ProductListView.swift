@@ -29,6 +29,21 @@ struct ProductDetailView: View {
                         Text(cat.rawValue).tag(cat)
                     }
                 }
+                if product.category == .anchor {
+                    OptionalEnumPicker("Default Hole Size", selection: $product.defaultHoleDiameter)
+
+                    HStack {
+                        Text("Rated Strength (lbs)")
+                        Spacer()
+                        TextField("lbs", value: $product.ratedStrengthLbs, format: .number)
+                            .multilineTextAlignment(.trailing)
+#if os(iOS)
+                            .keyboardType(.numberPad)
+#endif
+                            .frame(width: 80)
+                    }
+                }
+
                 Toggle("Active", isOn: $product.isActive)
                     .onChange(of: product.isActive) { _, isActive in
                         if isActive {
@@ -94,15 +109,23 @@ struct ProductDetailView: View {
 // MARK: - Seed Default Products
 
 func seedDefaultProducts(context: ModelContext) {
-    let anchors: [String] = [
-        "SP10",
-        "SP12",
-        "SP18",
-        "SP58",
-        "SP88",
+    let anchors: [(name: String, hole: HoleDiameter?, rated: Int?)] = [
+        ("SP10", .sevenEighths, 1500),
+        ("SP12", .sevenEighths, 2000),
+        ("SP18", .one, 2500),
+        ("SP58", .oneAndOneHalf, 5000),
+        ("SP88", nil, nil),
     ]
-    for name in anchors {
-        context.insert(Product(name: name, category: .anchor))
+    for anchor in anchors {
+        let isActive = anchor.name != "SP88"
+        context.insert(Product(
+            name: anchor.name,
+            category: .anchor,
+            isActive: isActive,
+            retiredOn: isActive ? nil : Date(),
+            defaultHoleDiameter: anchor.hole,
+            ratedStrengthLbs: anchor.rated
+        ))
     }
 
     let adhesives: [String] = [

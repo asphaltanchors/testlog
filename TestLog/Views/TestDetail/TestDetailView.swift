@@ -118,6 +118,11 @@ struct TestDetailView: View {
         .onChange(of: test.failureFamily) { _, _ in
             test.normalizeFailureSelections()
         }
+        .onChange(of: test.product?.persistentModelID) { _, _ in
+            if let defaultHole = test.product?.defaultHoleDiameter {
+                test.holeDiameter = defaultHole
+            }
+        }
         .onChange(of: test.site?.persistentModelID) { _, _ in
             test.location?.site = test.site
         }

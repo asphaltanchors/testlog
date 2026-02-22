@@ -138,6 +138,7 @@ struct TestTableView: View {
             TableColumn("Peak (lbs)", value: \.sortPeakForce) { test in
                 Text(peakForce(for: test))
                     .monospacedDigit()
+                    .foregroundStyle(peakForceColor(for: test))
             }
             .width(min: 65, ideal: 75)
 
@@ -164,6 +165,16 @@ struct TestTableView: View {
     private func peakForce(for test: PullTest) -> String {
         guard let peak = test.peakForceLbs else { return "—" }
         return String(format: "%.0f", peak)
+    }
+
+    private func peakForceColor(for test: PullTest) -> Color {
+        guard let peak = test.peakForceLbs, let rated = test.product?.ratedStrengthLbs else {
+            return .primary
+        }
+        let ratedDouble = Double(rated)
+        if peak < ratedDouble { return .red }
+        if peak >= ratedDouble * 2 { return .green }
+        return .primary
     }
 
     private func testedDateText(for test: PullTest) -> String {
@@ -267,7 +278,8 @@ struct TestTableView: View {
             let test = PullTest(
                 testID: testID,
                 product: product,
-                site: defaultSite()
+                site: defaultSite(),
+                holeDiameter: product?.defaultHoleDiameter
             )
             modelContext.insert(test)
             selectedTestIDs = [test.persistentModelID]

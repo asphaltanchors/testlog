@@ -11,7 +11,10 @@ struct TestMeasurementsSection: View {
                 test.measurements.sorted(by: { $0.sortOrder < $1.sortOrder }),
                 id: \.persistentModelID
             ) { measurement in
-                MeasurementRowView(measurement: measurement)
+                MeasurementRowView(
+                    measurement: measurement,
+                    ratedStrengthLbs: test.product?.ratedStrengthLbs
+                )
             }
             .onDelete(perform: deleteMeasurements)
 

@@ -16,6 +16,8 @@ final class Product {
     var isActive: Bool
     var retiredOn: Date?
     var retirementNote: String?
+    var defaultHoleDiameter: HoleDiameter?
+    var ratedStrengthLbs: Int?
 
     @Relationship(inverse: \PullTest.product)
     var tests: [PullTest] = []
@@ -29,7 +31,9 @@ final class Product {
         notes: String? = nil,
         isActive: Bool = true,
         retiredOn: Date? = nil,
-        retirementNote: String? = nil
+        retirementNote: String? = nil,
+        defaultHoleDiameter: HoleDiameter? = nil,
+        ratedStrengthLbs: Int? = nil
     ) {
         self.name = name
         self.category = category
@@ -37,5 +41,7 @@ final class Product {
         self.isActive = isActive
         self.retiredOn = retiredOn
         self.retirementNote = retirementNote
+        self.defaultHoleDiameter = defaultHoleDiameter
+        self.ratedStrengthLbs = ratedStrengthLbs
     }
 }

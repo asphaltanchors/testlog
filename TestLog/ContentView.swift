@@ -86,13 +86,13 @@ struct ContentView: View {
         if case .site(let siteID) = selectedSidebarItem,
            let site = allSites.first(where: { $0.persistentModelID == siteID }) {
             NavigationSplitView(columnVisibility: $columnVisibility) {
-                sidebar
+                sidebar.background(SplitColumnAutosave(key: "TestLog.2col"))
             } detail: {
                 SiteDetailView(site: site)
             }
         } else {
             NavigationSplitView(columnVisibility: $columnVisibility) {
-                sidebar
+                sidebar.background(SplitColumnAutosave(key: "TestLog.3col"))
             } content: {
                 contentView
             } detail: {
@@ -463,6 +463,60 @@ struct ContentView: View {
     }
     #endif
 }
+
+// MARK: - NSSplitView column-width autosave
+
+#if os(macOS)
+/// Embed as `.background(SplitColumnAutosave(key:))` inside a NavigationSplitView column to
+/// persist and restore split-view column widths across destroy/recreate cycles.
+private struct SplitColumnAutosave: NSViewRepresentable {
+    let key: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(key: key) }
+    func makeNSView(context: Context) -> ProbeView { ProbeView(coordinator: context.coordinator) }
+    func updateNSView(_ nsView: ProbeView, context: Context) {}
+
+    // MARK: Probe view — lives inside a column, walks up to find the NSSplitView
+    final class ProbeView: NSView {
+        weak var coordinator: Coordinator?
+        init(coordinator: Coordinator) {
+            self.coordinator = coordinator
+            super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            DispatchQueue.main.async { [weak self] in self?.findSplitView() }
+        }
+
+        private func findSplitView() {
+            var v: NSView? = superview
+            while let current = v {
+                if let sv = current as? NSSplitView {
+                    coordinator?.connect(to: sv)
+                    return
+                }
+                v = current.superview
+            }
+        }
+    }
+
+    // MARK: Coordinator — observes resize notifications and saves/restores positions
+    final class Coordinator: NSObject {
+        let key: String
+        private weak var connectedSplitView: NSSplitView?
+
+        init(key: String) { self.key = key }
+
+        func connect(to sv: NSSplitView) {
+            guard connectedSplitView !== sv else { return }
+            connectedSplitView = sv
+            sv.autosaveName = key
+        }
+    }
+}
+#endif
 
 #Preview {
     ContentView()

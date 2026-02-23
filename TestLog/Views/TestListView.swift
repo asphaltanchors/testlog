@@ -84,6 +84,7 @@ struct StatusBadge: View {
         switch status {
         case .planned: .blue
         case .installed: .orange
+        case .tested: .teal
         case .completed: .green
         }
     }

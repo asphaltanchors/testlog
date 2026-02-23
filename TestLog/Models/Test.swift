@@ -56,6 +56,10 @@ final class PullTest {
             return .completed
         }
 
+        if hasTestingEvidence {
+            return .tested
+        }
+
         guard let installedDate else {
             return .planned
         }
@@ -65,6 +69,17 @@ final class PullTest {
         }
 
         return .installed
+    }
+
+    var hasTestingEvidence: Bool {
+        hasValidMeasurement || testerBinaryAsset != nil
+    }
+
+    private var hasValidMeasurement: Bool {
+        measurements.contains { measurement in
+            guard let force = measurement.force else { return false }
+            return force.isFinite && force > 0
+        }
     }
 
     init(

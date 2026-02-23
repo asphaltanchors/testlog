@@ -193,6 +193,7 @@ enum FailureBehavior: String, Codable, CaseIterable, Identifiable {
 enum TestStatus: String, Codable, CaseIterable, Identifiable {
     case planned = "Planned"
     case installed = "Installed"
+    case tested = "Tested"
     case completed = "Completed"
 
     var id: String { rawValue }

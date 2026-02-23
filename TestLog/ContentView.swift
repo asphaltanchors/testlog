@@ -12,9 +12,7 @@ import SwiftData
 
 enum SidebarItem: Hashable {
     case allTests
-    case allProducts
     case allSites
-    case productCategory(ProductCategory)
     case product(PersistentIdentifier)
     case site(PersistentIdentifier)
     case status(TestStatus)
@@ -39,27 +37,22 @@ struct ContentView: View {
         allProducts.filter { $0.category == .anchor && $0.isActive }
     }
 
-    private var adhesiveProducts: [Product] {
-        allProducts.filter { $0.category == .adhesive && $0.isActive }
-    }
-
     @State private var selectedSidebarItem: SidebarItem? = .allTests
     @State private var selectedTestIDs: Set<PersistentIdentifier> = []
-    @State private var selectedProductIDs: Set<PersistentIdentifier> = []
     @State private var selectedSiteIDs: Set<PersistentIdentifier> = []
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var showingProductEditor: Product?
-    @State private var pendingProductDeletion: Product?
 #if os(macOS)
     @State private var videoWorkspaceTestID: PersistentIdentifier?
     @State private var previousColumnVisibility: NavigationSplitViewVisibility = .all
     @State private var pendingTestAssetDropRequest: TestAssetDropRequest?
 #endif
-    @AppStorage("sidebar.products.anchorsExpanded") private var isAnchorsExpanded = true
-    @AppStorage("sidebar.products.adhesivesExpanded") private var isAdhesivesExpanded = true
 
     private var selectedTests: [PullTest] {
         allTests.filter { selectedTestIDs.contains($0.persistentModelID) }
+    }
+
+    private var statusSidebarOrder: [TestStatus] {
+        [.planned, .installed, .completed, .tested]
     }
 
     private var testDropHandler: ((PullTest, [URL]) -> Void)? {
@@ -128,36 +121,9 @@ struct ContentView: View {
 
     private var mainSplitView: some View {
         splitViewBody
-        .sheet(item: $showingProductEditor) { product in
-            NavigationStack {
-                ProductDetailView(product: product)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showingProductEditor = nil }
-                        }
-                    }
-            }
-            .frame(minWidth: 400, minHeight: 300)
-        }
-        .confirmationDialog(
-            "Delete this product?",
-            isPresented: productDeleteDialogBinding
-        ) {
-            Button("Delete", role: .destructive) {
-                deletePendingProduct()
-            }
-            Button("Cancel", role: .cancel) {
-                pendingProductDeletion = nil
-            }
-        } message: {
-            if let product = pendingProductDeletion {
-                Text("This will delete \(product.name). Tests using this product will lose their product reference.")
-            }
-        }
         .onChange(of: selectedSidebarItem) { _, _ in
             // Keep detail pane in sync with the active middle-column dataset.
             selectedTestIDs.removeAll()
-            selectedProductIDs.removeAll()
             selectedSiteIDs.removeAll()
         }
     }
@@ -168,44 +134,20 @@ struct ContentView: View {
         List(selection: $selectedSidebarItem) {
             Section("Library") {
                 sidebarRow("All Tests", icon: "flask", tag: .allTests, badge: allTests.count)
-                sidebarRow("All Products", icon: "shippingbox", tag: .allProducts, badge: allProducts.count)
                 sidebarRow("All Sites", icon: "map", tag: .allSites, badge: allSites.count)
             }
 
             Section("Status") {
-                ForEach(TestStatus.allCases) { status in
+                ForEach(statusSidebarOrder, id: \.self) { status in
                     let count = allTests.filter { $0.status == status }.count
                     sidebarRow(status.rawValue, icon: iconForStatus(status), tag: .status(status), badge: count)
                 }
             }
 
             Section("Products") {
-                DisclosureGroup(isExpanded: $isAnchorsExpanded) {
-                    ForEach(anchorProducts, id: \.persistentModelID) { product in
-                        productSidebarRow(product)
-                    }
-                } label: {
-                    Label("Anchors", systemImage: "folder")
+                ForEach(anchorProducts, id: \.persistentModelID) { product in
+                    productSidebarRow(product)
                 }
-                .tag(SidebarItem.productCategory(.anchor))
-
-                DisclosureGroup(isExpanded: $isAdhesivesExpanded) {
-                    ForEach(adhesiveProducts, id: \.persistentModelID) { product in
-                        productSidebarRow(product)
-                    }
-                } label: {
-                    Label("Adhesives", systemImage: "folder")
-                }
-                .tag(SidebarItem.productCategory(.adhesive))
-
-#if os(iOS)
-                Button {
-                    createProductAndOpenEditor()
-                } label: {
-                    Label("New Product", systemImage: "plus.circle")
-                }
-                .buttonStyle(.borderless)
-#endif
             }
 
             Section("Sites") {
@@ -268,19 +210,10 @@ struct ContentView: View {
         let count = product.tests.count + product.adhesiveTests.count
         return sidebarRow(
             product.name,
-            icon: product.category == .anchor ? "shippingbox" : "drop.fill",
+            icon: "shippingbox",
             tag: .product(product.persistentModelID),
             badge: count
         )
-        .contextMenu {
-            Button("Edit Product...") {
-                showingProductEditor = product
-            }
-            Divider()
-            Button("Delete Product", role: .destructive) {
-                pendingProductDeletion = product
-            }
-        }
     }
 
     private func siteSidebarRow(_ site: Site) -> some View {
@@ -305,26 +238,6 @@ struct ContentView: View {
                 title: "All Tests",
                 onDropFilesOntoTest: testDropHandler
             )
-        case .allProducts:
-#if os(iOS)
-            ProductTableView(
-                products: allProducts,
-                selectedProductIDs: $selectedProductIDs,
-                title: "All Products",
-                onAddProduct: {
-                    createProductAndOpenEditor(
-                        preferredCategory: .anchor,
-                        destination: .allProducts
-                    )
-                }
-            )
-#else
-            ProductTableView(
-                products: allProducts,
-                selectedProductIDs: $selectedProductIDs,
-                title: "All Products"
-            )
-#endif
         case .allSites:
 #if os(iOS)
             SiteTableView(
@@ -340,26 +253,6 @@ struct ContentView: View {
                 sites: allSites,
                 selectedSiteIDs: $selectedSiteIDs,
                 title: "All Sites"
-            )
-#endif
-        case .productCategory(let category):
-#if os(iOS)
-            ProductTableView(
-                products: allProducts.filter { $0.category == category },
-                selectedProductIDs: $selectedProductIDs,
-                title: category == .anchor ? "Anchor Products" : "Adhesive Products",
-                onAddProduct: {
-                    createProductAndOpenEditor(
-                        preferredCategory: category,
-                        destination: .productCategory(category)
-                    )
-                }
-            )
-#else
-            ProductTableView(
-                products: allProducts.filter { $0.category == category },
-                selectedProductIDs: $selectedProductIDs,
-                title: category == .anchor ? "Anchor Products" : "Adhesive Products"
             )
 #endif
         case .status(let status):
@@ -397,13 +290,6 @@ struct ContentView: View {
     @ViewBuilder
     private var detailView: some View {
         switch selectedSidebarItem {
-        case .allProducts, .productCategory(_):
-            let selectedProducts = allProducts.filter { selectedProductIDs.contains($0.persistentModelID) }
-            if let product = selectedProducts.first, selectedProducts.count == 1 {
-                ProductDetailView(product: product)
-            } else {
-                ContentUnavailableView("Select a Product", systemImage: "shippingbox", description: Text("Choose a product to view its details."))
-            }
         case .allSites:
             let selectedSites = allSites.filter { selectedSiteIDs.contains($0.persistentModelID) }
             if let site = selectedSites.first, selectedSites.count == 1 {
@@ -442,42 +328,12 @@ struct ContentView: View {
         switch status {
         case .planned: "clock"
         case .installed: "wrench"
+        case .tested: "waveform.path.ecg"
         case .completed: "checkmark.circle"
         }
     }
 
-    private var productDeleteDialogBinding: Binding<Bool> {
-        Binding(
-            get: { pendingProductDeletion != nil },
-            set: { if !$0 { pendingProductDeletion = nil } }
-        )
-    }
-
-    private func deletePendingProduct() {
-        guard let product = pendingProductDeletion else { return }
-        if case .product(let id) = selectedSidebarItem, id == product.persistentModelID {
-            selectedSidebarItem = .allTests
-        }
-        selectedProductIDs.remove(product.persistentModelID)
-        modelContext.delete(product)
-        pendingProductDeletion = nil
-    }
-
     #if os(iOS)
-    private func createProductAndOpenEditor(
-        preferredCategory: ProductCategory = .anchor,
-        destination: SidebarItem = .allProducts
-    ) {
-        let product = Product(
-            name: "New Product",
-            category: preferredCategory
-        )
-        modelContext.insert(product)
-        selectedSidebarItem = destination
-        selectedProductIDs = [product.persistentModelID]
-        showingProductEditor = product
-    }
-
     private func createSite(destination: SidebarItem = .allSites) {
         let site = Site(
             name: "New Site",

@@ -384,6 +384,7 @@ private struct SiteGridCell: View {
         switch test.status {
         case .planned:   return .blue.opacity(0.2)
         case .installed: return .orange.opacity(0.2)
+        case .tested:    return .teal.opacity(0.2)
         case .completed: return .green.opacity(0.2)
         }
     }
@@ -393,6 +394,7 @@ private struct SiteGridCell: View {
         switch test.status {
         case .planned:   return .blue
         case .installed: return .orange
+        case .tested:    return .teal
         case .completed: return .green
         }
     }

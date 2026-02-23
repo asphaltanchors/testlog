@@ -92,6 +92,15 @@ enum TestType: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+// MARK: - Measurement Type
+
+enum MeasurementType: String, Codable, CaseIterable, Identifiable {
+    case observedPeak = "Observed Peak"
+    case testerPeak = "Tester Peak"
+
+    var id: String { rawValue }
+}
+
 // MARK: - Failure Mode
 
 // Single-field failure mode retained to support older data formats.

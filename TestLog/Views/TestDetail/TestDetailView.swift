@@ -106,11 +106,13 @@ struct TestDetailView: View {
         }
         .navigationTitle(test.testID ?? "New Test")
         .onAppear {
+            test.normalizeLegacyMeasurementTypes()
             test.syncFailureFieldsFromModeIfNeeded()
             test.normalizeFailureSelections()
             test.location?.site = test.site
         }
         .onChange(of: test.persistentModelID) { _, _ in
+            test.normalizeLegacyMeasurementTypes()
             test.syncFailureFieldsFromModeIfNeeded()
             test.normalizeFailureSelections()
             test.location?.site = test.site

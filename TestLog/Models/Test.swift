@@ -11,6 +11,7 @@ import SwiftData
 @Model
 final class PullTest {
     static let testerMaxMeasurementLabel = "Tester Max"
+    static let observedPeakMeasurementLabel = "Observed Peak"
 
     var testID: String?
     var product: Product?
@@ -174,19 +175,38 @@ final class PullTest {
     }
 
     var peakForceLbs: Double? {
-        measurements.compactMap(\.force).max()
+        if let testerPeakMeasurement, let testerPeak = testerPeakMeasurement.force {
+            if testerPeakMeasurement.measurementType == nil {
+                testerPeakMeasurement.measurementType = .testerPeak
+            }
+            return testerPeak
+        }
+
+        if let observedPeak = observedPeakMeasurement?.force {
+            return observedPeak
+        }
+
+        return measurements
+            .filter { $0.measurementType == nil }
+            .compactMap(\.force)
+            .max()
     }
 
     func upsertTesterMaxMeasurement(forceLbs: Double) {
+        normalizeLegacyMeasurementTypes()
         guard forceLbs.isFinite else { return }
         let roundedForce = forceLbs.rounded()
-        if let measurement = testerMaxMeasurement {
+        if let measurement = testerPeakMeasurement {
             measurement.force = roundedForce
+            measurement.measurementType = .testerPeak
+            measurement.label = Self.testerMaxMeasurementLabel
+            measurement.isManual = false
         } else {
             let nextSortOrder = (measurements.map(\.sortOrder).max() ?? -1) + 1
             let measurement = TestMeasurement(
                 test: self,
                 label: Self.testerMaxMeasurementLabel,
+                measurementType: .testerPeak,
                 force: roundedForce,
                 displacement: nil,
                 timestamp: nil,
@@ -198,12 +218,52 @@ final class PullTest {
     }
 
     func removeTesterMaxMeasurement() {
-        if let measurement = testerMaxMeasurement {
-            measurements.removeAll { $0.persistentModelID == measurement.persistentModelID }
+        normalizeLegacyMeasurementTypes()
+        measurements.removeAll { $0.measurementType == .testerPeak }
+    }
+
+    func upsertObservedPeakMeasurement(forceLbs: Double) {
+        guard forceLbs.isFinite else { return }
+        if let measurement = observedPeakMeasurement {
+            measurement.force = forceLbs
+            measurement.measurementType = .observedPeak
+            measurement.label = Self.observedPeakMeasurementLabel
+            measurement.isManual = true
+        } else {
+            let nextSortOrder = (measurements.map(\.sortOrder).max() ?? -1) + 1
+            let measurement = TestMeasurement(
+                test: self,
+                label: Self.observedPeakMeasurementLabel,
+                measurementType: .observedPeak,
+                force: forceLbs,
+                displacement: nil,
+                timestamp: nil,
+                isManual: true,
+                sortOrder: nextSortOrder
+            )
+            measurements.append(measurement)
         }
     }
 
-    private var testerMaxMeasurement: TestMeasurement? {
-        measurements.first { $0.label == Self.testerMaxMeasurementLabel && $0.isManual == false }
+    func removeObservedPeakMeasurement() {
+        measurements.removeAll { $0.measurementType == .observedPeak }
+    }
+
+    func normalizeLegacyMeasurementTypes() {
+        for measurement in measurements where measurement.measurementType == nil {
+            if measurement.isManual == false || measurement.label == Self.testerMaxMeasurementLabel {
+                measurement.measurementType = .testerPeak
+            }
+        }
+    }
+
+    var testerPeakMeasurement: TestMeasurement? {
+        measurements.first { $0.measurementType == .testerPeak }
+            ?? measurements.first { $0.measurementType == nil && ($0.isManual == false || $0.label == Self.testerMaxMeasurementLabel) }
+    }
+
+    var observedPeakMeasurement: TestMeasurement? {
+        measurements.first { $0.measurementType == .observedPeak }
+            ?? measurements.first { $0.measurementType == nil && $0.label == Self.observedPeakMeasurementLabel && $0.isManual }
     }
 }

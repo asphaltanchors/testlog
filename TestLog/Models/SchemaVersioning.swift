@@ -552,17 +552,176 @@ enum SchemaV3: VersionedSchema {
     }
 }
 
+// MARK: - Schema V4
+// Adds TestMeasurement.measurementType (optional enum -> lightweight).
+
+enum SchemaV4: VersionedSchema {
+    static var versionIdentifier = Schema.Version(4, 0, 0)
+
+    static var models: [any PersistentModel.Type] {
+        [
+            Product.self,
+            PullTest.self,
+            TestMeasurement.self,
+            Site.self,
+            Location.self,
+            Asset.self,
+            VideoSyncConfiguration.self,
+        ]
+    }
+
+    @Model
+    final class Product {
+        var name: String
+        var category: ProductCategory
+        var notes: String?
+        var isActive: Bool
+        var retiredOn: Date?
+        var retirementNote: String?
+        var defaultHoleDiameter: HoleDiameter?
+        var ratedStrengthLbs: Int?
+
+        @Relationship(inverse: \PullTest.product)
+        var tests: [PullTest] = []
+
+        @Relationship(inverse: \PullTest.adhesive)
+        var adhesiveTests: [PullTest] = []
+
+        init() { name = ""; category = .anchor; isActive = true }
+    }
+
+    @Model
+    final class PullTest {
+        var testID: String?
+        var product: Product?
+        var site: Site?
+        var location: Location?
+        var installedDate: Date?
+        var testedDate: Date?
+        var anchorMaterial: AnchorMaterial?
+        var adhesive: Product?
+        var holeDiameter: HoleDiameter?
+        var cureDays: Int?
+        var pavementTemp: Int?
+        var brushSize: BrushSize?
+        var testType: TestType?
+        var failureFamily: FailureFamily?
+        var failureMechanism: FailureMechanism?
+        var failureBehavior: FailureBehavior?
+        var failureMode: FailureMode?
+        var notes: String?
+        var isValid: Bool
+
+        @Relationship(deleteRule: .cascade)
+        var measurements: [TestMeasurement] = []
+
+        @Relationship(deleteRule: .cascade)
+        var assets: [Asset] = []
+
+        @Relationship(deleteRule: .cascade)
+        var videoSyncConfiguration: VideoSyncConfiguration?
+
+        init() { isValid = true }
+    }
+
+    @Model
+    final class TestMeasurement {
+        var test: PullTest?
+        var label: String
+        var measurementType: MeasurementType?
+        var force: Double?
+        var displacement: Double?
+        var timestamp: Date?
+        var isManual: Bool
+        var sortOrder: Int
+
+        init() { label = ""; isManual = true; sortOrder = 0 }
+    }
+
+    @Model
+    final class Site {
+        @Attribute(.unique) var name: String
+        var notes: String?
+        var isPrimaryPad: Bool
+        var gridColumns: Int?
+        var gridRows: Int?
+
+        init() { name = ""; isPrimaryPad = false }
+    }
+
+    @Model
+    final class Location {
+        var label: String?
+        var gridColumn: Int?
+        var gridRow: Int?
+        var notes: String?
+        var site: Site?
+
+        @Relationship(inverse: \PullTest.location)
+        var test: PullTest?
+
+        init() {}
+    }
+
+    @Model
+    final class Asset {
+        var test: PullTest?
+        var assetType: AssetType
+        var filename: String
+        var relativePath: String
+        var createdAt: Date
+        var notes: String?
+        var byteSize: Int64?
+        var contentType: String?
+        var checksumSHA256: String?
+        var durationSeconds: Double?
+        var frameRate: Double?
+        var videoWidth: Int?
+        var videoHeight: Int?
+        var isManagedCopy: Bool
+        var videoRole: VideoRole?
+
+        init() { assetType = .photo; filename = ""; relativePath = ""; createdAt = Date(); isManagedCopy = false }
+    }
+
+    @Model
+    final class VideoSyncConfiguration {
+        @Relationship(inverse: \PullTest.videoSyncConfiguration)
+        var test: PullTest?
+        var primaryVideoAssetID: String?
+        var equipmentVideoAssetID: String?
+        var autoOffsetSeconds: Double?
+        var manualOffsetSeconds: Double
+        var trimInSeconds: Double?
+        var trimOutSeconds: Double?
+        var lastSyncedAt: Date?
+        var equipmentRotationQuarterTurns: Int
+        var equipmentCropX: Double
+        var equipmentCropY: Double
+        var equipmentCropWidth: Double
+        var equipmentCropHeight: Double
+
+        init() {
+            manualOffsetSeconds = 0
+            equipmentRotationQuarterTurns = 0
+            equipmentCropX = 0; equipmentCropY = 0
+            equipmentCropWidth = 1; equipmentCropHeight = 1
+        }
+    }
+}
+
 // MARK: - Migration Plan
 
 enum TestLogMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [SchemaV1.self, SchemaV2.self, SchemaV3.self]
+        [SchemaV1.self, SchemaV2.self, SchemaV3.self, SchemaV4.self]
     }
 
     static var stages: [MigrationStage] {
         [
             .lightweight(fromVersion: SchemaV1.self, toVersion: SchemaV2.self),
             .lightweight(fromVersion: SchemaV2.self, toVersion: SchemaV3.self),
+            .lightweight(fromVersion: SchemaV3.self, toVersion: SchemaV4.self),
         ]
     }
 }

@@ -6,7 +6,7 @@ struct MeasurementRowView: View {
 
     var body: some View {
         HStack {
-            if measurement.isManual {
+            if isEditable {
                 TextField("", text: $measurement.label, prompt: Text("Label"))
                     .labelsHidden()
                     .frame(minWidth: 100, maxWidth: 150, alignment: .leading)
@@ -34,6 +34,13 @@ struct MeasurementRowView: View {
                     .foregroundStyle(forceColor(measurement.force))
             }
         }
+    }
+
+    private var isEditable: Bool {
+        if measurement.measurementType == .testerPeak {
+            return false
+        }
+        return measurement.isManual
     }
 
     private func forceColor(_ force: Double?) -> Color {

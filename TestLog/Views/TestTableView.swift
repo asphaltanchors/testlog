@@ -392,6 +392,7 @@ struct TestTableView: View {
             duplicate.measurements = source.measurements.map { measurement in
                 TestMeasurement(
                     label: measurement.label,
+                    measurementType: measurement.measurementType,
                     force: measurement.force,
                     displacement: measurement.displacement,
                     timestamp: measurement.timestamp,

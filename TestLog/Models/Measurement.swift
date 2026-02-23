@@ -12,6 +12,7 @@ import SwiftData
 final class TestMeasurement {
     var test: PullTest?
     var label: String
+    var measurementType: MeasurementType?
     var force: Double?
     var displacement: Double?
     var timestamp: Date?
@@ -21,6 +22,7 @@ final class TestMeasurement {
     init(
         test: PullTest? = nil,
         label: String,
+        measurementType: MeasurementType? = nil,
         force: Double? = nil,
         displacement: Double? = nil,
         timestamp: Date? = nil,
@@ -29,6 +31,7 @@ final class TestMeasurement {
     ) {
         self.test = test
         self.label = label
+        self.measurementType = measurementType
         self.force = force
         self.displacement = displacement
         self.timestamp = timestamp

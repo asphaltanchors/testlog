@@ -132,12 +132,8 @@ struct ContentView: View {
 
     private var sidebar: some View {
         List(selection: $selectedSidebarItem) {
-            Section("Library") {
-                sidebarRow("All Tests", icon: "flask", tag: .allTests, badge: allTests.count)
-                sidebarRow("All Sites", icon: "map", tag: .allSites, badge: allSites.count)
-            }
-
             Section("Status") {
+                sidebarRow("All Tests", icon: "flask", tag: .allTests, badge: allTests.count)
                 ForEach(statusSidebarOrder, id: \.self) { status in
                     let count = allTests.filter { $0.status == status }.count
                     sidebarRow(status.rawValue, icon: iconForStatus(status), tag: .status(status), badge: count)

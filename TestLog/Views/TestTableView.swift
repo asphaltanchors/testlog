@@ -10,6 +10,22 @@ import SwiftData
 import UniformTypeIdentifiers
 
 struct TestTableView: View {
+    private enum ValidityFilter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case valid = "Valid"
+        case invalid = "Invalid"
+
+        var id: String { rawValue }
+    }
+
+    private enum TypeFilter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case pull = "Pull"
+        case shear = "Shear"
+
+        var id: String { rawValue }
+    }
+
     let tests: [PullTest]
     @Binding var selectedTestIDs: Set<PersistentIdentifier>
     let title: String
@@ -20,6 +36,8 @@ struct TestTableView: View {
     @Query private var allTests: [PullTest]
     @Query(sort: \Site.name) private var allSites: [Site]
     @State private var searchText = ""
+    @State private var validityFilter: ValidityFilter = .all
+    @State private var typeFilter: TypeFilter = .all
     @State private var sortOrder: [KeyPathComparator<PullTest>] = [
         KeyPathComparator(\PullTest.sortTestID, comparator: .localizedStandard)
     ]
@@ -32,16 +50,40 @@ struct TestTableView: View {
 #endif
 
     private var filteredTests: [PullTest] {
-        let base = tests
-        guard !searchText.isEmpty else { return base }
-        let text = searchText.lowercased()
-        return base.filter { test in
-            (test.testID?.lowercased().contains(text) ?? false) ||
-            (test.site?.name.lowercased().contains(text) ?? false) ||
-            (test.location?.displayLabel.lowercased().contains(text) ?? false) ||
-            (test.product?.name.lowercased().contains(text) ?? false) ||
-            (test.adhesive?.name.lowercased().contains(text) ?? false) ||
-            (test.notes?.lowercased().contains(text) ?? false)
+        tests.filter { test in
+            let matchesValidity = switch validityFilter {
+            case .all:
+                true
+            case .valid:
+                test.isValid
+            case .invalid:
+                !test.isValid
+            }
+
+            let matchesType = switch typeFilter {
+            case .all:
+                true
+            case .pull:
+                test.testType ?? .pull == .pull
+            case .shear:
+                test.testType == .shear
+            }
+
+            let matchesSearch: Bool
+            if searchText.isEmpty {
+                matchesSearch = true
+            } else {
+                let text = searchText.lowercased()
+                matchesSearch =
+                    (test.testID?.lowercased().contains(text) ?? false) ||
+                    (test.site?.name.lowercased().contains(text) ?? false) ||
+                    (test.location?.displayLabel.lowercased().contains(text) ?? false) ||
+                    (test.product?.name.lowercased().contains(text) ?? false) ||
+                    (test.adhesive?.name.lowercased().contains(text) ?? false) ||
+                    (test.notes?.lowercased().contains(text) ?? false)
+            }
+
+            return matchesValidity && matchesType && matchesSearch
         }
     }
 
@@ -60,6 +102,19 @@ struct TestTableView: View {
         .navigationTitle(title)
         .searchable(text: $searchText, prompt: "Search tests...")
         .toolbar {
+            ToolbarItemGroup {
+                Picker("Validity", selection: $validityFilter) {
+                    ForEach(ValidityFilter.allCases) { filter in
+                        Text(filter.rawValue).tag(filter)
+                    }
+                }
+
+                Picker("Type", selection: $typeFilter) {
+                    ForEach(TypeFilter.allCases) { filter in
+                        Text(filter.rawValue).tag(filter)
+                    }
+                }
+            }
             ToolbarItem {
                 Button(action: addTest) {
                     Label("Add Test", systemImage: "plus")

@@ -83,9 +83,7 @@ struct TestTableView: View {
 
                 if hitTable != nil, responderName.contains("FieldEditor") {
                     window.makeFirstResponder(nil)
-                    // The original click is consumed by the focus resignation —
-                    // the table treats it as "become first responder", not
-                    // "select row". Re-post so the table gets a clean click.
+                    // Re-post so the row click still lands after ending field editing.
                     DispatchQueue.main.async {
                         NSApp.sendEvent(event)
                     }
@@ -100,6 +98,9 @@ struct TestTableView: View {
                 NSEvent.removeMonitor(tableMouseMonitor)
                 self.tableMouseMonitor = nil
             }
+        }
+        .onChange(of: selectedTestIDs) { _, newValue in
+            previousMacSelection = newValue
         }
 #endif
     }
@@ -195,18 +196,21 @@ struct TestTableView: View {
                 let modifiers = NSApp.currentEvent?.modifierFlags ?? []
                 let isMultiSelectIntent = modifiers.contains(.command) || modifiers.contains(.shift)
 
-                if !isMultiSelectIntent, newValue.count > 1 {
-                    if let newest = newValue.subtracting(previousMacSelection).first {
-                        selectedTestIDs = [newest]
-                    } else if let fallback = newValue.first {
-                        selectedTestIDs = [fallback]
-                    } else {
-                        selectedTestIDs = newValue
-                    }
-                } else {
+                guard !isMultiSelectIntent, newValue.count > 1 else {
                     selectedTestIDs = newValue
+                    previousMacSelection = selectedTestIDs
+                    return
                 }
 
+                if let newest = newValue.subtracting(previousMacSelection).first {
+                    selectedTestIDs = [newest]
+                } else if let visibleFallback = sortedFilteredTests
+                    .map(\.persistentModelID)
+                    .first(where: { newValue.contains($0) }) {
+                    selectedTestIDs = [visibleFallback]
+                } else {
+                    selectedTestIDs = []
+                }
                 previousMacSelection = selectedTestIDs
             }
         )

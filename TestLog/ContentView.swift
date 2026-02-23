@@ -400,8 +400,10 @@ struct ContentView: View {
             } else if let test = selected.first {
                 #if os(macOS)
                 TestDetailView(test: test, onOpenVideoWorkspace: openVideoWorkspace)
+                    .id(test.persistentModelID)
                 #else
                 TestDetailView(test: test)
+                    .id(test.persistentModelID)
                 #endif
             } else {
                 ContentUnavailableView("Select a Test", systemImage: "flask", description: Text("Choose a test to view its details."))

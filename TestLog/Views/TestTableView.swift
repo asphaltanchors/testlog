@@ -100,6 +100,31 @@ struct TestTableView: View {
             #endif
         }
         .navigationTitle(title)
+#if os(macOS)
+        .searchable(text: $searchText, placement: .toolbar, prompt: "Search tests...")
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                HStack {
+                    Picker("Validity", selection: $validityFilter) {
+                        ForEach(ValidityFilter.allCases) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 120)
+
+                    Picker("Type", selection: $typeFilter) {
+                        ForEach(TypeFilter.allCases) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 120)
+                }
+            }
+        }
+#endif
+#if os(iOS)
         .searchable(text: $searchText, prompt: "Search tests...")
         .toolbar {
             ToolbarItemGroup {
@@ -121,6 +146,7 @@ struct TestTableView: View {
                 }
             }
         }
+#endif
 #if os(macOS)
         .onAppear {
             guard tableMouseMonitor == nil else { return }

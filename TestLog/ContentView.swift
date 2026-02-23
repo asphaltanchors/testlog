@@ -116,6 +116,17 @@ struct ContentView: View {
             } detail: {
                 detailView
             }
+#if os(macOS)
+            .toolbar {
+                if showsAddTestToolbarItem {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: addTest) {
+                            Label("Add Test", systemImage: "plus")
+                        }
+                    }
+                }
+            }
+#endif
         }
     }
 
@@ -342,6 +353,34 @@ struct ContentView: View {
     #endif
 
     #if os(macOS)
+    private var showsAddTestToolbarItem: Bool {
+        guard !isVideoWorkspaceMode else { return false }
+
+        switch selectedSidebarItem {
+        case .allTests, .status, .product:
+            return true
+        case .allSites, .site, nil:
+            return false
+        }
+    }
+
+    private func addTest() {
+        withAnimation {
+            let nextNumber = (allTests.compactMap { test in
+                guard let id = test.testID, id.hasPrefix("T") else { return nil }
+                return Int(id.dropFirst())
+            }.max() ?? 0) + 1
+
+            let test = PullTest(
+                testID: String(format: "T%03d", nextNumber),
+                site: allSites.first(where: \.isPrimaryPad) ?? allSites.first
+            )
+
+            modelContext.insert(test)
+            selectedTestIDs = [test.persistentModelID]
+        }
+    }
+
     private var videoWorkspaceTest: PullTest? {
         guard let videoWorkspaceTestID else { return nil }
         return allTests.first(where: { $0.persistentModelID == videoWorkspaceTestID })

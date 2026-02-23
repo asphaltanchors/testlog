@@ -17,6 +17,7 @@ final class VideoSyncConfiguration {
     var equipmentVideoAssetID: String?
     var autoOffsetSeconds: Double?
     var manualOffsetSeconds: Double
+    var testerDataOffsetSeconds: Double
     var trimInSeconds: Double?
     var trimOutSeconds: Double?
     var lastSyncedAt: Date?
@@ -32,6 +33,7 @@ final class VideoSyncConfiguration {
         equipmentVideoAssetID: String? = nil,
         autoOffsetSeconds: Double? = nil,
         manualOffsetSeconds: Double = 0,
+        testerDataOffsetSeconds: Double = 0,
         trimInSeconds: Double? = nil,
         trimOutSeconds: Double? = nil,
         lastSyncedAt: Date? = nil,
@@ -46,6 +48,7 @@ final class VideoSyncConfiguration {
         self.equipmentVideoAssetID = equipmentVideoAssetID
         self.autoOffsetSeconds = autoOffsetSeconds
         self.manualOffsetSeconds = manualOffsetSeconds
+        self.testerDataOffsetSeconds = testerDataOffsetSeconds
         self.trimInSeconds = trimInSeconds
         self.trimOutSeconds = trimOutSeconds
         self.lastSyncedAt = lastSyncedAt

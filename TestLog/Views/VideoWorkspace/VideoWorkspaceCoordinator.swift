@@ -28,9 +28,14 @@ final class VideoWorkspaceCoordinator {
     var syncService: VideoSyncing?
     var exportService: VideoExporting?
     var testerDataParser: TesterDataParsing?
+    var testerDataSamples: [ParsedForceSample] = []
+    var testerDataStatusMessage: String?
 
     var primaryTimeObserverToken: Any?
     var lastScrubSeekUptime: TimeInterval = 0
+    var hasAttemptedInitialAutoSync = false
+    var primaryLoadedDurationSeconds: Double?
+    var equipmentLoadedDurationSeconds: Double?
 
     func configure(
         test: PullTest,
@@ -47,6 +52,7 @@ final class VideoWorkspaceCoordinator {
 
         ensureSyncConfiguration()
         sanitizeWorkspaceState()
+        reloadTesterDataSamples()
         reloadPlayers()
         installPrimaryTimeObserver()
     }
@@ -70,11 +76,11 @@ final class VideoWorkspaceCoordinator {
     }
 
     var primaryDuration: Double {
-        max(primaryVideoAsset?.durationSeconds ?? 0, 1)
+        max(primaryLoadedDurationSeconds ?? primaryVideoAsset?.durationSeconds ?? 0, 1)
     }
 
     var equipmentDuration: Double {
-        max(equipmentVideoAsset?.durationSeconds ?? 0, 0)
+        max(equipmentLoadedDurationSeconds ?? equipmentVideoAsset?.durationSeconds ?? 0, 0)
     }
 
     var timelineDomain: ClosedRange<Double> {
@@ -158,6 +164,31 @@ final class VideoWorkspaceCoordinator {
         if !isPlayingSynced {
             seekPlayers(toPrimaryTime: scrubberTimeSeconds)
         }
+    }
+
+    var testerDataOffsetSeconds: Double {
+        syncConfiguration?.testerDataOffsetSeconds ?? 0
+    }
+
+    func setTesterDataOffsetSeconds(_ value: Double) {
+        syncConfiguration?.testerDataOffsetSeconds = value
+    }
+
+    var equipmentPreviewTimeSeconds: Double {
+        max(0, scrubberTimeSeconds + (syncConfiguration?.effectiveOffsetSeconds ?? 0))
+    }
+
+    var lbySampleTimeSeconds: Double {
+        equipmentPreviewTimeSeconds + testerDataOffsetSeconds
+    }
+
+    var currentTesterForceKN: Double? {
+        interpolatedTesterForceKN(at: lbySampleTimeSeconds)
+    }
+
+    var currentTesterForceText: String {
+        guard let force = currentTesterForceKN else { return "— kN" }
+        return String(format: "%.2f kN", force)
     }
 
     var equipmentRotationQuarterTurns: Int {
@@ -251,6 +282,7 @@ final class VideoWorkspaceCoordinator {
 
     func refreshSelectionAfterAssetsChange() {
         sanitizeWorkspaceState()
+        reloadTesterDataSamples()
         reloadPlayers()
     }
 }

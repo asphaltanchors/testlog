@@ -106,6 +106,9 @@ struct VideoWorkspaceView: View {
                 exportService: exportService,
                 testerDataParser: testerDataParser
             )
+            Task {
+                await coordinator.runInitialAutoSyncIfNeeded()
+            }
         }
         .onChange(of: test.assets.count) { _, _ in
             coordinator.refreshSelectionAfterAssetsChange()

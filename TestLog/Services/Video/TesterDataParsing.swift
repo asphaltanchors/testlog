@@ -10,7 +10,11 @@ import Foundation
 struct ParsedForceSample: Identifiable, Hashable {
     let id = UUID()
     let timeSeconds: Double
-    let forceLbs: Double
+    let forceKN: Double
+
+    var forceLbs: Double {
+        forceKN * 224.80894387096
+    }
 }
 
 protocol TesterDataParsing {
@@ -33,13 +37,12 @@ struct LBYTesterDataParser: TesterDataParsing, Sendable {
         let payload = data.subdata(in: dataOffset..<data.count)
         let samples = loadWordsLE(from: payload)
 
-        // Source units are kN*1000 (per Python reference). Convert to lbs.
+        // Source units are kN*1000 (per Python reference).
         return samples.enumerated().map { index, raw in
             let forceKN = Double(raw) * 0.001
-            let forceLbs = forceKN * 224.80894387096
             return ParsedForceSample(
                 timeSeconds: Double(index) * 0.5,
-                forceLbs: forceLbs
+                forceKN: forceKN
             )
         }
     }

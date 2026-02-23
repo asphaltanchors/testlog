@@ -47,6 +47,13 @@ extension VideoWorkspaceCoordinator {
         }
     }
 
+    func runInitialAutoSyncIfNeeded() async {
+        guard !hasAttemptedInitialAutoSync else { return }
+        hasAttemptedInitialAutoSync = true
+        guard videoAssets.count >= 2 else { return }
+        await runAutoSync()
+    }
+
     func exportComposedVideo(to outputURL: URL) async {
         guard
             let exportService,
@@ -135,6 +142,51 @@ extension VideoWorkspaceCoordinator {
 
         syncConfiguration.trimInSeconds = normalizedTrimIn
         syncConfiguration.trimOutSeconds = normalizedTrimOut
+    }
+
+    func reloadTesterDataSamples() {
+        testerDataStatusMessage = nil
+        guard let test else {
+            testerDataSamples = []
+            return
+        }
+        guard let testerAsset = test.testerBinaryAsset, let testerURL = testerAsset.resolvedURL else {
+            testerDataSamples = []
+            return
+        }
+        guard let testerDataParser else {
+            testerDataSamples = []
+            testerDataStatusMessage = "Tester parser is unavailable."
+            return
+        }
+
+        do {
+            testerDataSamples = try testerDataParser.parseSamples(from: testerURL)
+            if testerDataSamples.isEmpty {
+                testerDataStatusMessage = "No LBY samples found."
+            }
+        } catch {
+            testerDataSamples = []
+            testerDataStatusMessage = "Could not parse tester data: \(error.localizedDescription)"
+        }
+    }
+
+    func interpolatedTesterForceKN(at time: Double) -> Double? {
+        guard !testerDataSamples.isEmpty, time.isFinite else { return nil }
+        guard let first = testerDataSamples.first, let last = testerDataSamples.last else { return nil }
+        if time <= first.timeSeconds { return first.forceKN }
+        if time >= last.timeSeconds { return last.forceKN }
+
+        for index in 1..<testerDataSamples.count {
+            let left = testerDataSamples[index - 1]
+            let right = testerDataSamples[index]
+            if time <= right.timeSeconds {
+                let span = max(right.timeSeconds - left.timeSeconds, 0.000001)
+                let t = (time - left.timeSeconds) / span
+                return left.forceKN + (right.forceKN - left.forceKN) * t
+            }
+        }
+        return last.forceKN
     }
 }
 #endif

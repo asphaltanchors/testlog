@@ -70,6 +70,43 @@ struct VideoWorkspaceControls: View {
                 .frame(width: 120)
                 .multilineTextAlignment(.trailing)
             }
+
+            Divider()
+
+            HStack {
+                Text("LBY Force (kN)")
+                Spacer()
+                Text(coordinator.currentTesterForceText)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Text("LBY Offset")
+                Spacer()
+                TextField(
+                    "Seconds",
+                    value: Binding(
+                        get: { coordinator.testerDataOffsetSeconds },
+                        set: { coordinator.setTesterDataOffsetSeconds($0) }
+                    ),
+                    format: .number.precision(.fractionLength(3))
+                )
+                .frame(width: 120)
+                .multilineTextAlignment(.trailing)
+            }
+
+            if let testerStatus = coordinator.testerDataStatusMessage {
+                Text(testerStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            LBYForceGraphView(
+                samples: coordinator.testerDataSamples,
+                cameraTimeSeconds: coordinator.equipmentPreviewTimeSeconds,
+                lbySampleTimeSeconds: coordinator.lbySampleTimeSeconds
+            )
         }
     }
 

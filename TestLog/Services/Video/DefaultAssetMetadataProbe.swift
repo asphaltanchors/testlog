@@ -18,9 +18,11 @@ struct DefaultAssetMetadataProbe: AssetMetadataProbing, Sendable {
             return metadata
         }
 
-        let avAsset = AVURLAsset(url: url)
-        let duration = try await avAsset.load(.duration)
-        metadata.durationSeconds = duration.seconds.isFinite ? duration.seconds : nil
+        let avAsset = AVURLAsset(
+            url: url,
+            options: [AVURLAssetPreferPreciseDurationAndTimingKey: true]
+        )
+        metadata.durationSeconds = try await loadRobustDurationSeconds(from: avAsset)
         let tracks = try await avAsset.loadTracks(withMediaType: .video)
         if let track = tracks.first {
             let naturalSize = try await track.load(.naturalSize)
@@ -32,6 +34,30 @@ struct DefaultAssetMetadataProbe: AssetMetadataProbing, Sendable {
             metadata.frameRate = Double(frameRate)
         }
         return metadata
+    }
+
+    private nonisolated func loadRobustDurationSeconds(from asset: AVAsset) async throws -> Double? {
+        let direct = try await asset.load(.duration).seconds
+        if direct.isFinite, direct > 1.0 {
+            return direct
+        }
+
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        if let firstVideo = tracks.first {
+            let videoDuration = try await firstVideo.load(.timeRange).duration.seconds
+            if videoDuration.isFinite, videoDuration > 1.0 {
+                return videoDuration
+            }
+        }
+
+        let allTracks = try await asset.load(.tracks)
+        let trackDurations = try await allTracks.asyncMap { track in
+            try await track.load(.timeRange).duration.seconds
+        }
+        let bestTrackDuration = trackDurations
+            .filter { $0.isFinite && $0 > 1.0 }
+            .max()
+        return bestTrackDuration
     }
 
     private nonisolated func sha256(url: URL) throws -> String {
@@ -47,5 +73,16 @@ struct DefaultAssetMetadataProbe: AssetMetadataProbing, Sendable {
             hasher.update(data: data)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+private extension Array {
+    func asyncMap<T>(_ transform: (Element) async throws -> T) async rethrows -> [T] {
+        var output: [T] = []
+        output.reserveCapacity(count)
+        for element in self {
+            output.append(try await transform(element))
+        }
+        return output
     }
 }

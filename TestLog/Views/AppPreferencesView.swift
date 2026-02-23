@@ -2,6 +2,8 @@ import SwiftUI
 import SwiftData
 
 #if os(macOS)
+import AppKit
+
 struct AppPreferencesView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -11,6 +13,7 @@ struct AppPreferencesView: View {
     @State private var showArchivedProducts = true
     @State private var selectedProductID: PersistentIdentifier?
     @State private var pendingProductDeletion: Product?
+    @State private var isRepairingMedia = false
 
     private var filteredProducts: [Product] {
         allProducts.filter { product in
@@ -128,6 +131,18 @@ struct AppPreferencesView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            GroupBox("Media") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Scan managed media, reattach missing files, and deduplicate identical files.")
+                        .foregroundStyle(.secondary)
+
+                    Button("Fix Media Attachments") {
+                        runMediaRepair()
+                    }
+                    .disabled(isRepairingMedia)
+                }
+            }
         }
         .onAppear {
             selectFirstVisibleProductIfNeeded()
@@ -203,6 +218,49 @@ struct AppPreferencesView: View {
             isPrimaryPad: allSites.isEmpty
         )
         modelContext.insert(site)
+    }
+
+    private func runMediaRepair() {
+        guard !isRepairingMedia else { return }
+        isRepairingMedia = true
+        let container = modelContext.container
+        Task { @MainActor in
+            let result = await Task.detached(priority: .userInitiated) {
+                let backgroundContext = ModelContext(container)
+                do {
+                    return Result<MediaAttachmentRepairService.Report, Error>.success(
+                        try MediaAttachmentRepairService().run(in: backgroundContext)
+                    )
+                } catch {
+                    return Result<MediaAttachmentRepairService.Report, Error>.failure(error)
+                }
+            }.value
+            isRepairingMedia = false
+
+            switch result {
+            case .success(let report):
+                showRepairAlert(
+                    title: "Media Repair Complete",
+                    message: report.summary,
+                    style: .informational
+                )
+            case .failure(let error):
+                showRepairAlert(
+                    title: "Media Repair Failed",
+                    message: error.localizedDescription,
+                    style: .critical
+                )
+            }
+        }
+    }
+
+    private func showRepairAlert(title: String, message: String, style: NSAlert.Style) {
+        let alert = NSAlert()
+        alert.alertStyle = style
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
 

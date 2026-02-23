@@ -29,15 +29,23 @@ extension VideoWorkspaceCoordinator {
 
     func reloadPlayers() {
         pauseSyncedPlayback()
+        primaryLoadedDurationSeconds = nil
+        equipmentLoadedDurationSeconds = nil
 
         if let primaryURL = primaryVideoAsset?.resolvedURL {
             primaryPlayer.replaceCurrentItem(with: AVPlayerItem(url: primaryURL))
+            Task {
+                await refreshLoadedDuration(for: primaryURL, isPrimary: true)
+            }
         } else {
             primaryPlayer.replaceCurrentItem(with: nil)
         }
 
         if let equipmentURL = equipmentVideoAsset?.resolvedURL {
             equipmentPlayer.replaceCurrentItem(with: AVPlayerItem(url: equipmentURL))
+            Task {
+                await refreshLoadedDuration(for: equipmentURL, isPrimary: false)
+            }
         } else {
             equipmentPlayer.replaceCurrentItem(with: nil)
         }
@@ -45,6 +53,51 @@ extension VideoWorkspaceCoordinator {
         primaryPlayer.isMuted = false
         equipmentPlayer.isMuted = true
         seekPlayersToTrimStart()
+    }
+
+    func refreshLoadedDuration(for url: URL, isPrimary: Bool) async {
+        let asset = AVURLAsset(
+            url: url,
+            options: [AVURLAssetPreferPreciseDurationAndTimingKey: true]
+        )
+
+        let duration = await resolveDurationSeconds(for: asset)
+        guard duration.isFinite, duration > 0 else { return }
+
+        if isPrimary {
+            primaryLoadedDurationSeconds = duration
+            primaryVideoAsset?.durationSeconds = duration
+        } else {
+            equipmentLoadedDurationSeconds = duration
+            equipmentVideoAsset?.durationSeconds = duration
+        }
+    }
+
+    private func resolveDurationSeconds(for asset: AVAsset) async -> Double {
+        if let direct = try? await asset.load(.duration).seconds, direct.isFinite, direct > 1.0 {
+            return direct
+        }
+
+        if
+            let firstVideo = try? await asset.loadTracks(withMediaType: .video).first,
+            let videoDuration = try? await firstVideo.load(.timeRange).duration.seconds,
+            videoDuration.isFinite,
+            videoDuration > 1.0
+        {
+            return videoDuration
+        }
+
+        if
+            let tracks = try? await asset.load(.tracks),
+            let trackDurations = try? await tracks.asyncMap({ track in
+                try await track.load(.timeRange).duration.seconds
+            }),
+            let best = trackDurations.filter({ $0.isFinite && $0 > 0 }).max()
+        {
+            return best
+        }
+
+        return 0
     }
 
     func playSyncedFromCurrentTime() {
@@ -129,3 +182,14 @@ extension VideoWorkspaceCoordinator {
     }
 }
 #endif
+
+private extension Array {
+    func asyncMap<T>(_ transform: (Element) async throws -> T) async rethrows -> [T] {
+        var output: [T] = []
+        output.reserveCapacity(count)
+        for element in self {
+            output.append(try await transform(element))
+        }
+        return output
+    }
+}

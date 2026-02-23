@@ -93,6 +93,17 @@ struct TestCSVImportService {
 
         let anchorProducts = allProducts.filter { $0.category == .anchor }
         let adhesiveProducts = allProducts.filter { $0.category == .adhesive }
+        let cutMarkerName = "CUT"
+        let sp18ProductName = "SP18"
+        let cutDownSP18Note = "Cut-down SP18 test."
+        var sp18Product = anchorProducts.first {
+            $0.name.caseInsensitiveCompare(sp18ProductName) == .orderedSame
+        }
+        if sp18Product == nil {
+            let product = Product(name: sp18ProductName, category: .anchor)
+            modelContext.insert(product)
+            sp18Product = product
+        }
 
         var created = 0
         var updated = 0
@@ -100,6 +111,7 @@ struct TestCSVImportService {
         var rowsWithInvalidInstalledDate = 0
         var rowsWithInvalidTestedDate = 0
         var rowsWithInvalidTemp = 0
+        var rowsWithInvalidLocation = 0
         var unmatchedAnchorNames = Set<String>()
         var unmatchedAdhesiveNames = Set<String>()
         var unmatchedMaterials = Set<String>()
@@ -113,6 +125,7 @@ struct TestCSVImportService {
         let adhesiveColumn = headerIndex["adhesive"]!
         let testTypeColumn = headerIndex["testtype"]!
         let pavementTempColumn = headerIndex["pavementtemp"]!
+        let locationColumn = headerIndex["location"]
 
         for row in rows.dropFirst() {
             let testID = value(in: row, at: testIDColumn)
@@ -128,10 +141,14 @@ struct TestCSVImportService {
             let adhesiveRaw = value(in: row, at: adhesiveColumn)
             let testTypeRaw = value(in: row, at: testTypeColumn)
             let pavementTempRaw = value(in: row, at: pavementTempColumn)
+            let locationRaw = locationColumn.map { value(in: row, at: $0) } ?? ""
 
             let installedDate = parseDate(installedDateRaw)
             let testedDate = parseDate(testedDateRaw)
             let pavementTemp = parseInteger(pavementTempRaw)
+            let locationCoordinate = parseLocationCoordinate(locationRaw)
+            let isCutProductRow = trimmedOrNil(productRaw)?
+                .caseInsensitiveCompare(cutMarkerName) == .orderedSame
 
             if trimmedOrNil(installedDateRaw) != nil && installedDate == nil {
                 rowsWithInvalidInstalledDate += 1
@@ -142,8 +159,11 @@ struct TestCSVImportService {
             if trimmedOrNil(pavementTempRaw) != nil && pavementTemp == nil {
                 rowsWithInvalidTemp += 1
             }
+            if trimmedOrNil(locationRaw) != nil && locationCoordinate == nil {
+                rowsWithInvalidLocation += 1
+            }
 
-            let matchedProduct = matchProduct(named: productRaw, in: anchorProducts)
+            let matchedProduct = isCutProductRow ? sp18Product : matchProduct(named: productRaw, in: anchorProducts)
             if trimmedOrNil(productRaw) != nil, matchedProduct == nil {
                 unmatchedAnchorNames.insert(productRaw.trimmingCharacters(in: .whitespacesAndNewlines))
             }
@@ -172,6 +192,21 @@ struct TestCSVImportService {
                 existing.adhesive = matchedAdhesive
                 existing.testType = matchedTestType ?? .pull
                 existing.pavementTemp = pavementTemp
+                if isCutProductRow {
+                    existing.isValid = false
+                    existing.notes = appendedNote(existing.notes, note: cutDownSP18Note)
+                }
+                if let locationCoordinate {
+                    let location = existing.location ?? Location()
+                    location.site = existing.site ?? defaultSite
+                    location.gridColumn = locationCoordinate.column
+                    location.gridRow = locationCoordinate.row
+                    if existing.location == nil {
+                        existing.location = location
+                    }
+                } else if trimmedOrNil(locationRaw) == nil {
+                    existing.location = nil
+                }
                 updated += 1
             } else {
                 let test = PullTest(
@@ -185,6 +220,17 @@ struct TestCSVImportService {
                     pavementTemp: pavementTemp,
                     testType: matchedTestType ?? .pull
                 )
+                if isCutProductRow {
+                    test.isValid = false
+                    test.notes = cutDownSP18Note
+                }
+                if let locationCoordinate {
+                    test.location = Location(
+                        site: test.site ?? defaultSite,
+                        gridColumn: locationCoordinate.column,
+                        gridRow: locationCoordinate.row
+                    )
+                }
                 modelContext.insert(test)
                 created += 1
             }
@@ -201,6 +247,9 @@ struct TestCSVImportService {
         }
         if rowsWithInvalidTemp > 0 {
             warnings.append("Invalid Pavement Temp rows: \(rowsWithInvalidTemp)")
+        }
+        if rowsWithInvalidLocation > 0 {
+            warnings.append("Invalid Location rows: \(rowsWithInvalidLocation)")
         }
         if !unmatchedAnchorNames.isEmpty {
             warnings.append("Unmatched anchor products: \(unmatchedAnchorNames.sorted().joined(separator: ", "))")
@@ -258,6 +307,14 @@ struct TestCSVImportService {
         return nil
     }
 
+    private func appendedNote(_ existing: String?, note: String) -> String {
+        guard let existing = trimmedOrNil(existing) else { return note }
+        if existing.localizedCaseInsensitiveContains(note) {
+            return existing
+        }
+        return "\(existing)\n\(note)"
+    }
+
     private func parseInteger(_ rawValue: String) -> Int? {
         guard let trimmed = trimmedOrNil(rawValue) else { return nil }
         if let integer = Int(trimmed) {
@@ -267,6 +324,21 @@ struct TestCSVImportService {
             return Int(decimal.rounded())
         }
         return nil
+    }
+
+    private func parseLocationCoordinate(_ rawValue: String) -> (column: Int, row: Int)? {
+        guard let trimmed = trimmedOrNil(rawValue) else { return nil }
+        let compact = trimmed
+            .uppercased()
+            .replacingOccurrences(of: " ", with: "")
+        guard !compact.isEmpty else { return nil }
+
+        let prefixLetters = String(compact.prefix { $0.isLetter })
+        let suffixDigits = String(compact.dropFirst(prefixLetters.count))
+        guard !prefixLetters.isEmpty, !suffixDigits.isEmpty else { return nil }
+        guard suffixDigits.allSatisfy(\.isNumber), let row = Int(suffixDigits), row > 0 else { return nil }
+        guard let column = GridCoordinateCodec.gridColumnIndex(from: prefixLetters) else { return nil }
+        return (column: column, row: row)
     }
 
     private func parseAnchorMaterial(_ rawValue: String) -> AnchorMaterial? {

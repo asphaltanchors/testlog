@@ -110,11 +110,12 @@ struct ProductDetailView: View {
 
 func seedDefaultProducts(context: ModelContext) {
     let anchors: [(name: String, hole: HoleDiameter?, rated: Int?)] = [
+        ("AM625", .sevenEighths, 1000),
         ("SP10", .sevenEighths, 1500),
         ("SP12", .sevenEighths, 2000),
         ("SP18", .one, 2500),
         ("SP58", .oneAndOneHalf, 5000),
-        ("SP88", nil, nil),
+        ("SP88", .oneAndOneHalf, nil),
     ]
     for anchor in anchors {
         let isActive = anchor.name != "SP88"
@@ -132,6 +133,8 @@ func seedDefaultProducts(context: ModelContext) {
         "EPX3 - MKT LiquidROK 700",
         "EPX5 - MKT LiquidROK 200",
         "EPX2 - Damtite Anchoring Cement",
+        "EPX2 - Quikrete Anchoring Cement",
+        "Sika Anchorfix-2",
     ]
     for name in adhesives {
         context.insert(Product(name: name, category: .adhesive))

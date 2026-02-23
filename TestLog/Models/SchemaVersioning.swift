@@ -148,7 +148,7 @@ enum SchemaV1: VersionedSchema {
     @Model
     final class Location {
         var label: String?
-        var gridColumn: String?
+        var gridColumn: Int?
         var gridRow: Int?
         var notes: String?
         var site: Site?
@@ -158,7 +158,7 @@ enum SchemaV1: VersionedSchema {
 
         init(
             label: String? = nil,
-            gridColumn: String? = nil,
+            gridColumn: Int? = nil,
             gridRow: Int? = nil,
             notes: String? = nil
         ) {
@@ -337,7 +337,7 @@ enum SchemaV2: VersionedSchema {
     @Model
     final class Location {
         var label: String?
-        var gridColumn: String?
+        var gridColumn: Int?
         var gridRow: Int?
         var notes: String?
         var site: Site?
@@ -494,7 +494,7 @@ enum SchemaV3: VersionedSchema {
     @Model
     final class Location {
         var label: String?
-        var gridColumn: String?
+        var gridColumn: Int?
         var gridRow: Int?
         var notes: String?
         var site: Site?

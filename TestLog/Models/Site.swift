@@ -34,10 +34,10 @@ final class Site {
 func seedDefaultSites(context: ModelContext) {
     context.insert(
         Site(
-            name: "Main Pad",
-            notes: "Default 50 x 50 test grid.",
+            name: "Bennett Valley",
+            notes: "Bennett Valley Test Site",
             isPrimaryPad: true,
-            gridColumns: 50,
+            gridColumns: 12,
             gridRows: 50
         )
     )

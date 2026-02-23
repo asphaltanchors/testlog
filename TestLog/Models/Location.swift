@@ -11,7 +11,7 @@ import SwiftData
 @Model
 final class Location {
     var label: String?
-    var gridColumn: String?
+    var gridColumn: Int?
     var gridRow: Int?
     var notes: String?
 
@@ -34,22 +34,14 @@ final class Location {
 
     private var gridCoordinateLabel: String? {
         guard let row = gridRow, row > 0 else { return nil }
-        guard let rawColumn = gridColumn?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
-            .replacingOccurrences(of: " ", with: ""),
-            !rawColumn.isEmpty
-        else {
-            return nil
-        }
-
-        return "\(rawColumn)\(row)"
+        guard let column = gridColumn, column > 0 else { return nil }
+        return "\(GridCoordinateCodec.gridColumnLabel(for: column))\(row)"
     }
 
     init(
         label: String? = nil,
         site: Site? = nil,
-        gridColumn: String? = nil,
+        gridColumn: Int? = nil,
         gridRow: Int? = nil,
         notes: String? = nil
     ) {

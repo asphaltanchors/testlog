@@ -20,6 +20,14 @@ enum SidebarItem: Hashable {
     case status(TestStatus)
 }
 
+#if os(macOS)
+struct TestAssetDropRequest {
+    let id = UUID()
+    let testID: PersistentIdentifier
+    let urls: [URL]
+}
+#endif
+
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Product.name) private var allProducts: [Product]
@@ -45,12 +53,21 @@ struct ContentView: View {
 #if os(macOS)
     @State private var videoWorkspaceTestID: PersistentIdentifier?
     @State private var previousColumnVisibility: NavigationSplitViewVisibility = .all
+    @State private var pendingTestAssetDropRequest: TestAssetDropRequest?
 #endif
     @AppStorage("sidebar.products.anchorsExpanded") private var isAnchorsExpanded = true
     @AppStorage("sidebar.products.adhesivesExpanded") private var isAdhesivesExpanded = true
 
     private var selectedTests: [PullTest] {
         allTests.filter { selectedTestIDs.contains($0.persistentModelID) }
+    }
+
+    private var testDropHandler: ((PullTest, [URL]) -> Void)? {
+#if os(macOS)
+        handleDroppedFilesOntoTest
+#else
+        nil
+#endif
     }
 
     var body: some View {
@@ -285,7 +302,8 @@ struct ContentView: View {
             TestTableView(
                 tests: allTests,
                 selectedTestIDs: $selectedTestIDs,
-                title: "All Tests"
+                title: "All Tests",
+                onDropFilesOntoTest: testDropHandler
             )
         case .allProducts:
 #if os(iOS)
@@ -348,7 +366,8 @@ struct ContentView: View {
             TestTableView(
                 tests: allTests.filter { $0.status == status },
                 selectedTestIDs: $selectedTestIDs,
-                title: status.rawValue
+                title: status.rawValue,
+                onDropFilesOntoTest: testDropHandler
             )
         case .product(let productID):
             if let product = allProducts.first(where: { $0.persistentModelID == productID }) {
@@ -356,7 +375,8 @@ struct ContentView: View {
                 TestTableView(
                     tests: relatedTests,
                     selectedTestIDs: $selectedTestIDs,
-                    title: product.name
+                    title: product.name,
+                    onDropFilesOntoTest: testDropHandler
                 )
             } else {
                 ContentUnavailableView("Product Not Found", systemImage: "shippingbox")
@@ -399,7 +419,12 @@ struct ContentView: View {
                 BulkEditView(tests: selected)
             } else if let test = selected.first {
                 #if os(macOS)
-                TestDetailView(test: test, onOpenVideoWorkspace: openVideoWorkspace)
+                TestDetailView(
+                    test: test,
+                    onOpenVideoWorkspace: openVideoWorkspace,
+                    pendingAssetDropRequest: pendingTestAssetDropRequest,
+                    onConsumePendingAssetDropRequest: consumePendingAssetDropRequest
+                )
                     .id(test.persistentModelID)
                 #else
                 TestDetailView(test: test)
@@ -500,6 +525,20 @@ struct ContentView: View {
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.ignoresSafeArea())
+    }
+
+    private func handleDroppedFilesOntoTest(_ test: PullTest, _ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        selectedTestIDs = [test.persistentModelID]
+        pendingTestAssetDropRequest = TestAssetDropRequest(
+            testID: test.persistentModelID,
+            urls: urls
+        )
+    }
+
+    private func consumePendingAssetDropRequest(_ requestID: UUID) {
+        guard pendingTestAssetDropRequest?.id == requestID else { return }
+        pendingTestAssetDropRequest = nil
     }
     #endif
 }

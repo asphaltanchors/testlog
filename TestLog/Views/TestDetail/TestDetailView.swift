@@ -7,6 +7,8 @@ struct TestDetailView: View {
     @Bindable var test: PullTest
 #if os(macOS)
     var onOpenVideoWorkspace: ((PullTest) -> Void)? = nil
+    var pendingAssetDropRequest: TestAssetDropRequest? = nil
+    var onConsumePendingAssetDropRequest: ((UUID) -> Void)? = nil
 #endif
 
     @Environment(\.modelContext) private var modelContext
@@ -26,6 +28,7 @@ struct TestDetailView: View {
     @State private var isImportingCandidates = false
     @State private var importStatusMessage: String?
     @State private var duplicateTesterWarning: String?
+    @State private var isAssetDropTargeted = false
 #endif
 
     @State private var mediaErrorMessage: String?
@@ -128,6 +131,11 @@ struct TestDetailView: View {
         }
 #if os(macOS)
         .formStyle(.grouped)
+        .onDrop(of: [UTType.fileURL], isTargeted: $isAssetDropTargeted) { providers in
+            handleDroppedFileProviders(providers) { urls in
+                prepareImportCandidates(from: urls)
+            }
+        }
 #endif
         .toolbar {
             ToolbarItem(placement: .destructiveAction) {
@@ -145,6 +153,12 @@ struct TestDetailView: View {
             Text("This will permanently delete \(test.testID ?? "this test") and all its measurements.")
         }
 #if os(macOS)
+        .onChange(of: pendingAssetDropRequest?.id) { _, _ in
+            consumePendingAssetDropIfNeeded()
+        }
+        .task(id: pendingAssetDropRequest?.id) {
+            consumePendingAssetDropIfNeeded()
+        }
         .sheet(isPresented: $showingImportReview) {
             TestImportReviewSheet(
                 pendingImportCandidates: $pendingImportCandidates,
@@ -230,34 +244,45 @@ struct TestDetailView: View {
 
 #if os(macOS)
 private extension TestDetailView {
+    func consumePendingAssetDropIfNeeded() {
+        guard let request = pendingAssetDropRequest else { return }
+        guard request.testID == test.persistentModelID else { return }
+        prepareImportCandidates(from: request.urls)
+        onConsumePendingAssetDropRequest?(request.id)
+    }
+
     func handleFileImportSelection(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
-            let candidates = importCoordinator.buildCandidates(
-                urls: urls,
-                existingVideos: test.videoAssets
-            )
-            guard !candidates.isEmpty else { return }
-            pendingImportCandidates = candidates
-
-            // Warn if any tester data file is already attached to a different test (by SHA256)
-            let dupeNames = candidates.compactMap { candidate -> String? in
-                guard candidate.selectedAssetType == .testerData else { return nil }
-                guard let hash = sha256(of: candidate.sourceURL) else { return nil }
-                let usedElsewhere = allAssets.contains {
-                    $0.assetType == .testerData &&
-                    $0.test?.persistentModelID != test.persistentModelID &&
-                    $0.checksumSHA256 == hash
-                }
-                return usedElsewhere ? candidate.sourceURL.lastPathComponent : nil
-            }
-            if !dupeNames.isEmpty {
-                duplicateTesterWarning = dupeNames.joined(separator: ", ")
-            } else {
-                proceedWithImport()
-            }
+            prepareImportCandidates(from: urls)
         case .failure(let error):
             mediaErrorMessage = error.localizedDescription
+        }
+    }
+
+    func prepareImportCandidates(from urls: [URL]) {
+        let candidates = importCoordinator.buildCandidates(
+            urls: urls,
+            existingVideos: test.videoAssets
+        )
+        guard !candidates.isEmpty else { return }
+        pendingImportCandidates = candidates
+
+        // Warn if any tester data file is already attached to a different test (by SHA256)
+        let dupeNames = candidates.compactMap { candidate -> String? in
+            guard candidate.selectedAssetType == .testerData else { return nil }
+            guard let hash = sha256(of: candidate.sourceURL) else { return nil }
+            let usedElsewhere = allAssets.contains {
+                $0.assetType == .testerData &&
+                $0.test?.persistentModelID != test.persistentModelID &&
+                $0.checksumSHA256 == hash
+            }
+            return usedElsewhere ? candidate.sourceURL.lastPathComponent : nil
+        }
+        if !dupeNames.isEmpty {
+            duplicateTesterWarning = dupeNames.joined(separator: ", ")
+        } else {
+            proceedWithImport()
         }
     }
 

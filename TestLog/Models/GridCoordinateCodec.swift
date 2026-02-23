@@ -1,16 +1,13 @@
 import Foundation
 
 enum GridCoordinateCodec {
-    static func normalizedGridColumnOrNil(_ value: String) -> String? {
-        let compact = value
+    static func gridColumnIndex(from value: String?) -> Int? {
+        guard let value else { return nil }
+        let normalized = value
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
             .replacingOccurrences(of: " ", with: "")
-        return compact.isEmpty ? nil : compact
-    }
-
-    static func gridColumnIndex(from value: String?) -> Int? {
-        guard let normalized = normalizedGridColumnOrNil(value ?? "") else { return nil }
+        guard !normalized.isEmpty else { return nil }
 
         if let numeric = Int(normalized), numeric > 0 {
             return numeric
@@ -32,6 +29,11 @@ enum GridCoordinateCodec {
         return row
     }
 
+    static func validGridColumn(_ column: Int?) -> Int? {
+        guard let column, column > 0 else { return nil }
+        return column
+    }
+
     static func gridColumnLabel(for index: Int) -> String {
         guard index > 0 else { return "?" }
 
@@ -46,9 +48,9 @@ enum GridCoordinateCodec {
         return String(characters.reversed())
     }
 
-    static func coordinateLabel(column: String?, row: Int?) -> String? {
+    static func coordinateLabel(column: Int?, row: Int?) -> String? {
         guard
-            let columnIndex = gridColumnIndex(from: column),
+            let columnIndex = validGridColumn(column),
             let validRow = validGridRow(row)
         else {
             return nil
@@ -56,9 +58,9 @@ enum GridCoordinateCodec {
         return "\(gridColumnLabel(for: columnIndex))\(validRow)"
     }
 
-    static func coordinateKey(column: String?, row: Int?) -> String? {
+    static func coordinateKey(column: Int?, row: Int?) -> String? {
         guard
-            let columnIndex = gridColumnIndex(from: column),
+            let columnIndex = validGridColumn(column),
             let validRow = validGridRow(row)
         else {
             return nil

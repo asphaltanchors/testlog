@@ -21,6 +21,7 @@ enum ProductCategory: String, Codable, CaseIterable, Identifiable, Hashable {
 enum AnchorMaterial: String, Codable, CaseIterable, Identifiable {
     case zinc = "Zinc"
     case stainless = "Stainless"
+    case plastic = "Plastic"
 
     var id: String { rawValue }
 }

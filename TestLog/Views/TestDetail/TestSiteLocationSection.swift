@@ -56,8 +56,11 @@ struct TestSiteLocationSection: View {
             TextField(
                 "Grid Column",
                 text: Binding(
-                    get: { location.gridColumn ?? "" },
-                    set: { location.gridColumn = GridCoordinateCodec.normalizedGridColumnOrNil($0) }
+                    get: {
+                        guard let gridColumn = location.gridColumn else { return "" }
+                        return GridCoordinateCodec.gridColumnLabel(for: gridColumn)
+                    },
+                    set: { location.gridColumn = GridCoordinateCodec.gridColumnIndex(from: $0) }
                 )
             )
 
@@ -88,7 +91,7 @@ struct TestSiteLocationSection: View {
             }
 
             if
-                let columnIndex = GridCoordinateCodec.gridColumnIndex(from: location.gridColumn),
+                let columnIndex = GridCoordinateCodec.validGridColumn(location.gridColumn),
                 let rowIndex = GridCoordinateCodec.validGridRow(location.gridRow)
             {
                 let previewColumns = max(siteGridColumns, columnIndex)

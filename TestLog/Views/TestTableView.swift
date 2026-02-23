@@ -7,12 +7,14 @@
 
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct TestTableView: View {
     let tests: [PullTest]
     @Binding var selectedTestIDs: Set<PersistentIdentifier>
     let title: String
     var product: Product? = nil
+    var onDropFilesOntoTest: ((PullTest, [URL]) -> Void)? = nil
 
     @Environment(\.modelContext) private var modelContext
     @Query private var allTests: [PullTest]
@@ -166,7 +168,18 @@ struct TestTableView: View {
                     }
             }
         }
+        .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
+            guard let selectedTest = selectedTestForDrop else { return false }
+            return handleDroppedFileProviders(providers) { urls in
+                onDropFilesOntoTest?(selectedTest, urls)
+            }
+        }
         .onMoveCommand(perform: handleMacMoveCommand)
+    }
+
+    private var selectedTestForDrop: PullTest? {
+        guard selectedTestIDs.count == 1, let selectedID = selectedTestIDs.first else { return nil }
+        return sortedFilteredTests.first(where: { $0.persistentModelID == selectedID })
     }
 
     private func peakForce(for test: PullTest) -> String {

@@ -85,11 +85,14 @@ final class TestAssetImportCoordinator {
         modelContext: ModelContext
     ) throws {
         try storageManager.removeManagedFileIfUnreferenced(asset, allAssets: allAssets)
-        let id = String(describing: asset.persistentModelID)
-        if test.videoSyncConfiguration?.primaryVideoAssetID == id {
+        if let primaryID = test.videoSyncConfiguration?.primaryVideoAssetID,
+           asset.matchesVideoSelectionID(primaryID)
+        {
             test.videoSyncConfiguration?.primaryVideoAssetID = nil
         }
-        if test.videoSyncConfiguration?.equipmentVideoAssetID == id {
+        if let equipmentID = test.videoSyncConfiguration?.equipmentVideoAssetID,
+           asset.matchesVideoSelectionID(equipmentID)
+        {
             test.videoSyncConfiguration?.equipmentVideoAssetID = nil
         }
         if asset.assetType == .testerData {

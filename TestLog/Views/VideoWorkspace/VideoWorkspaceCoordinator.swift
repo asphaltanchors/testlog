@@ -36,6 +36,8 @@ final class VideoWorkspaceCoordinator {
     var hasAttemptedInitialAutoSync = false
     var primaryLoadedDurationSeconds: Double?
     var equipmentLoadedDurationSeconds: Double?
+    var primaryDurationLoadRequestID = UUID()
+    var equipmentDurationLoadRequestID = UUID()
 
     func configure(
         test: PullTest,
@@ -86,7 +88,7 @@ final class VideoWorkspaceCoordinator {
     var timelineDomain: ClosedRange<Double> {
         let primaryStart = 0.0
         let primaryEnd = primaryDuration
-        let secondaryStart = syncConfiguration?.effectiveOffsetSeconds ?? 0
+        let secondaryStart = equipmentSharedStartTime
         let secondaryEnd = secondaryStart + equipmentDuration
 
         let lower = min(primaryStart, secondaryStart)
@@ -102,8 +104,16 @@ final class VideoWorkspaceCoordinator {
     }
 
     var secondaryRange: ClosedRange<Double> {
-        let start = syncConfiguration?.effectiveOffsetSeconds ?? 0
+        let start = equipmentSharedStartTime
         return start...(start + equipmentDuration)
+    }
+
+    var effectiveCameraOffsetSeconds: Double {
+        syncConfiguration?.effectiveOffsetSeconds ?? 0
+    }
+
+    var equipmentSharedStartTime: Double {
+        -effectiveCameraOffsetSeconds
     }
 
     var trimIn: Double {
@@ -138,6 +148,7 @@ final class VideoWorkspaceCoordinator {
 
     func setPrimarySelectionID(_ id: String) {
         syncConfiguration?.primaryVideoAssetID = id.isEmpty ? nil : id
+        sanitizeWorkspaceState()
         reloadPlayers()
     }
 
@@ -147,6 +158,7 @@ final class VideoWorkspaceCoordinator {
 
     func setEquipmentSelectionID(_ id: String) {
         syncConfiguration?.equipmentVideoAssetID = id.isEmpty ? nil : id
+        sanitizeWorkspaceState()
         isEditingEquipmentFrame = false
         reloadPlayers()
     }
@@ -175,7 +187,7 @@ final class VideoWorkspaceCoordinator {
     }
 
     var equipmentPreviewTimeSeconds: Double {
-        max(0, scrubberTimeSeconds + (syncConfiguration?.effectiveOffsetSeconds ?? 0))
+        clampedTime(mappedEquipmentTime(forPrimaryTime: scrubberTimeSeconds), for: equipmentPlayer)
     }
 
     var lbySampleTimeSeconds: Double {
@@ -257,33 +269,53 @@ final class VideoWorkspaceCoordinator {
     }
 
     func assetIdentifier(_ asset: Asset) -> String {
-        String(describing: asset.persistentModelID)
+        asset.videoSelectionKey
     }
 
     var videoAssets: [Asset] {
-        test?.videoAssets ?? []
+        orderedVideoAssets
     }
 
     var primaryVideoAsset: Asset? {
-        guard let test else { return nil }
+        guard !orderedVideoAssets.isEmpty else { return nil }
         if let preferredID = syncConfiguration?.primaryVideoAssetID {
-            return test.videoAssets.first(where: { assetIdentifier($0) == preferredID })
+            return resolvedAsset(forSelectionID: preferredID)
         }
-        return test.videoAssets.first(where: { $0.videoRole == .anchorView }) ?? test.videoAssets.first
+        return orderedVideoAssets.first(where: { $0.videoRole == .anchorView }) ?? orderedVideoAssets.first
     }
 
     var equipmentVideoAsset: Asset? {
-        guard let test else { return nil }
+        guard !orderedVideoAssets.isEmpty else { return nil }
         if let preferredID = syncConfiguration?.equipmentVideoAssetID {
-            return test.videoAssets.first(where: { assetIdentifier($0) == preferredID })
+            return resolvedAsset(forSelectionID: preferredID)
         }
-        return test.videoAssets.first(where: { $0.videoRole == .equipmentView })
+        return orderedVideoAssets.first(where: { $0.videoRole == .equipmentView })
     }
 
     func refreshSelectionAfterAssetsChange() {
         sanitizeWorkspaceState()
         reloadTesterDataSamples()
         reloadPlayers()
+    }
+
+    func mappedEquipmentTime(forPrimaryTime primaryTime: Double) -> Double {
+        primaryTime + effectiveCameraOffsetSeconds
+    }
+
+    var orderedVideoAssets: [Asset] {
+        (test?.videoAssets ?? []).sorted { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt < rhs.createdAt
+            }
+            if lhs.filename != rhs.filename {
+                return lhs.filename.localizedCaseInsensitiveCompare(rhs.filename) == .orderedAscending
+            }
+            return lhs.relativePath.localizedCaseInsensitiveCompare(rhs.relativePath) == .orderedAscending
+        }
+    }
+
+    func resolvedAsset(forSelectionID id: String) -> Asset? {
+        orderedVideoAssets.first(where: { $0.matchesVideoSelectionID(id) })
     }
 }
 

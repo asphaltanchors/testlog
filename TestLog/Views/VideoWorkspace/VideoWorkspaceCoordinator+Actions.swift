@@ -8,15 +8,15 @@ extension VideoWorkspaceCoordinator {
     }
 
     func validSelectionOrEmpty(_ value: String?) -> String {
-        guard let value, validVideoSelectionIDs.contains(value) else { return "" }
-        return value
+        guard let value, let asset = resolvedAsset(forSelectionID: value) else { return "" }
+        return assetIdentifier(asset)
     }
 
     func runAutoSync() async {
         guard
             let primary = primaryVideoAsset,
             let equipment = equipmentVideoAsset
-                ?? test?.videoAssets.first(where: { $0.persistentModelID != primary.persistentModelID })
+                ?? videoAssets.first(where: { $0.persistentModelID != primary.persistentModelID })
         else {
             statusMessage = "Attach at least two videos for auto sync."
             return
@@ -108,28 +108,38 @@ extension VideoWorkspaceCoordinator {
     }
 
     func sanitizeWorkspaceState() {
-        guard let syncConfiguration, let test else { return }
+        guard let syncConfiguration else { return }
 
-        if let primaryID = syncConfiguration.primaryVideoAssetID,
-           !validVideoSelectionIDs.contains(primaryID)
-        {
-            syncConfiguration.primaryVideoAssetID = nil
+        if let primaryID = syncConfiguration.primaryVideoAssetID {
+            syncConfiguration.primaryVideoAssetID = resolvedAsset(forSelectionID: primaryID).map(assetIdentifier)
         }
-        if let equipmentID = syncConfiguration.equipmentVideoAssetID,
-           !validVideoSelectionIDs.contains(equipmentID)
-        {
-            syncConfiguration.equipmentVideoAssetID = nil
+        if let equipmentID = syncConfiguration.equipmentVideoAssetID {
+            syncConfiguration.equipmentVideoAssetID = resolvedAsset(forSelectionID: equipmentID).map(assetIdentifier)
         }
 
-        if syncConfiguration.primaryVideoAssetID == nil,
-           let preferred = test.videoAssets.first(where: { $0.videoRole == .anchorView }) ?? test.videoAssets.first
-        {
-            syncConfiguration.primaryVideoAssetID = assetIdentifier(preferred)
+        if syncConfiguration.primaryVideoAssetID == nil {
+            let preferredPrimary =
+                videoAssets.first(where: { $0.videoRole == .anchorView })
+                ?? videoAssets.first
+            syncConfiguration.primaryVideoAssetID = preferredPrimary.map(assetIdentifier)
         }
-        if syncConfiguration.equipmentVideoAssetID == nil,
-           let preferred = test.videoAssets.first(where: { $0.videoRole == .equipmentView })
-        {
-            syncConfiguration.equipmentVideoAssetID = assetIdentifier(preferred)
+
+        if syncConfiguration.equipmentVideoAssetID == nil {
+            let preferredEquipment =
+                videoAssets.first(where: {
+                    $0.videoRole == .equipmentView
+                        && assetIdentifier($0) != syncConfiguration.primaryVideoAssetID
+                })
+                ?? videoAssets.first(where: {
+                    assetIdentifier($0) != syncConfiguration.primaryVideoAssetID
+                })
+            syncConfiguration.equipmentVideoAssetID = preferredEquipment.map(assetIdentifier)
+        }
+
+        if syncConfiguration.equipmentVideoAssetID == syncConfiguration.primaryVideoAssetID {
+            syncConfiguration.equipmentVideoAssetID = videoAssets
+                .first(where: { assetIdentifier($0) != syncConfiguration.primaryVideoAssetID })
+                .map(assetIdentifier)
         }
 
         if let auto = syncConfiguration.autoOffsetSeconds, abs(auto) > 20 {

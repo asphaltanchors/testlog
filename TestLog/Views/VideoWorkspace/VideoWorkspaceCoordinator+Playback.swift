@@ -31,11 +31,19 @@ extension VideoWorkspaceCoordinator {
         pauseSyncedPlayback()
         primaryLoadedDurationSeconds = nil
         equipmentLoadedDurationSeconds = nil
+        let primaryRequestID = UUID()
+        let equipmentRequestID = UUID()
+        primaryDurationLoadRequestID = primaryRequestID
+        equipmentDurationLoadRequestID = equipmentRequestID
 
         if let primaryURL = primaryVideoAsset?.resolvedURL {
             primaryPlayer.replaceCurrentItem(with: AVPlayerItem(url: primaryURL))
             Task {
-                await refreshLoadedDuration(for: primaryURL, isPrimary: true)
+                await refreshLoadedDuration(
+                    for: primaryURL,
+                    isPrimary: true,
+                    requestID: primaryRequestID
+                )
             }
         } else {
             primaryPlayer.replaceCurrentItem(with: nil)
@@ -44,7 +52,11 @@ extension VideoWorkspaceCoordinator {
         if let equipmentURL = equipmentVideoAsset?.resolvedURL {
             equipmentPlayer.replaceCurrentItem(with: AVPlayerItem(url: equipmentURL))
             Task {
-                await refreshLoadedDuration(for: equipmentURL, isPrimary: false)
+                await refreshLoadedDuration(
+                    for: equipmentURL,
+                    isPrimary: false,
+                    requestID: equipmentRequestID
+                )
             }
         } else {
             equipmentPlayer.replaceCurrentItem(with: nil)
@@ -55,7 +67,7 @@ extension VideoWorkspaceCoordinator {
         seekPlayersToTrimStart()
     }
 
-    func refreshLoadedDuration(for url: URL, isPrimary: Bool) async {
+    func refreshLoadedDuration(for url: URL, isPrimary: Bool, requestID: UUID) async {
         let asset = AVURLAsset(
             url: url,
             options: [AVURLAssetPreferPreciseDurationAndTimingKey: true]
@@ -65,12 +77,20 @@ extension VideoWorkspaceCoordinator {
         guard duration.isFinite, duration > 0 else { return }
 
         if isPrimary {
+            guard primaryDurationLoadRequestID == requestID else { return }
+            guard currentItemURL(for: primaryPlayer) == url else { return }
             primaryLoadedDurationSeconds = duration
             primaryVideoAsset?.durationSeconds = duration
         } else {
+            guard equipmentDurationLoadRequestID == requestID else { return }
+            guard currentItemURL(for: equipmentPlayer) == url else { return }
             equipmentLoadedDurationSeconds = duration
             equipmentVideoAsset?.durationSeconds = duration
         }
+    }
+
+    func currentItemURL(for player: AVPlayer) -> URL? {
+        (player.currentItem?.asset as? AVURLAsset)?.url
     }
 
     private func resolveDurationSeconds(for asset: AVAsset) async -> Double {
@@ -122,7 +142,7 @@ extension VideoWorkspaceCoordinator {
         let primaryClamped = clampedTime(boundedPrimary, for: primaryPlayer)
         seek(player: primaryPlayer, to: primaryClamped)
 
-        let secondaryRequested = max(0, boundedPrimary + (syncConfiguration?.effectiveOffsetSeconds ?? 0))
+        let secondaryRequested = mappedEquipmentTime(forPrimaryTime: boundedPrimary)
         let secondaryClamped = clampedTime(secondaryRequested, for: equipmentPlayer)
         seek(player: equipmentPlayer, to: secondaryClamped)
         scrubberTimeSeconds = boundedPrimary

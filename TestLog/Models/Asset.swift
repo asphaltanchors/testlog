@@ -26,9 +26,20 @@ final class Asset {
     var isManagedCopy: Bool
     var videoRole: VideoRole?
 
+    var videoSelectionKey: String {
+        relativePath
+    }
+
     var resolvedURL: URL? {
         guard let root = try? MediaPaths.mediaRootDirectory() else { return nil }
         return root.appendingPathComponent(relativePath)
+    }
+
+    func matchesVideoSelectionID(_ selectionID: String) -> Bool {
+        if selectionID == videoSelectionKey {
+            return true
+        }
+        return selectionID == String(describing: persistentModelID)
     }
 
     init(

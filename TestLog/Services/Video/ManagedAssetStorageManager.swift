@@ -42,17 +42,27 @@ struct ManagedAssetStorageManager: AssetStorageManaging, Sendable {
     }
 
     nonisolated func removeManagedFileIfUnreferenced(_ asset: Asset, allAssets: [Asset]) throws {
-        guard asset.isManagedCopy else { return }
         let refCount = allAssets.filter {
             $0.relativePath == asset.relativePath && $0.persistentModelID != asset.persistentModelID
         }.count
         guard refCount == 0 else { return }
         guard let resolvedURL = asset.resolvedURL else { return }
-        if FileManager.default.fileExists(atPath: resolvedURL.path) {
-            try FileManager.default.removeItem(at: resolvedURL)
+        let root = try MediaPaths.mediaRootDirectory().standardizedFileURL
+        let resolvedURLInSandbox = resolvedURL.standardizedFileURL
+
+        let isInsideSandboxMediaRoot =
+            resolvedURLInSandbox.path == root.path
+            || resolvedURLInSandbox.path.hasPrefix(root.path + "/")
+
+        // Keep legacy records removable when they point at sandbox-managed media,
+        // even if older schema versions left `isManagedCopy` as false.
+        guard asset.isManagedCopy || isInsideSandboxMediaRoot else { return }
+        guard resolvedURLInSandbox.path != root.path else { return }
+        if FileManager.default.fileExists(atPath: resolvedURLInSandbox.path) {
+            try FileManager.default.removeItem(at: resolvedURLInSandbox)
         }
 
-        let parent = resolvedURL.deletingLastPathComponent()
+        let parent = resolvedURLInSandbox.deletingLastPathComponent()
         if (try? FileManager.default.contentsOfDirectory(atPath: parent.path).isEmpty) == true {
             try? FileManager.default.removeItem(at: parent)
         }

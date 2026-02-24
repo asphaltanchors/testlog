@@ -68,16 +68,11 @@ struct DefaultVideoExportService: VideoExporting {
             }
         }
 
-        let videoComposition = AVMutableVideoComposition()
-        videoComposition.renderSize = request.renderSize
-        videoComposition.frameDuration = CMTime(value: 1, timescale: request.frameRate)
-
-        let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
-
-        let primaryLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: compositionPrimaryTrack)
+        var primaryLayerConfiguration = AVVideoCompositionLayerInstruction.Configuration(
+            trackID: compositionPrimaryTrack.trackID
+        )
         let fullFrameRect = CGRect(origin: .zero, size: request.renderSize)
-        primaryLayer.setTransform(
+        primaryLayerConfiguration.setTransform(
             try await VideoExportTransforms.placedTransform(
                 for: primaryVideoTrack,
                 destination: fullFrameRect,
@@ -85,6 +80,7 @@ struct DefaultVideoExportService: VideoExporting {
             ),
             at: .zero
         )
+        let primaryLayer = AVVideoCompositionLayerInstruction(configuration: primaryLayerConfiguration)
         var layerInstructions: [AVVideoCompositionLayerInstruction] = [primaryLayer]
 
         if
@@ -92,7 +88,9 @@ struct DefaultVideoExportService: VideoExporting {
             let equipmentAsset = request.equipmentAsset,
             let equipmentURL = equipmentAsset.resolvedURL
         {
-            let secondaryLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: secondaryTrack)
+            var secondaryLayerConfiguration = AVVideoCompositionLayerInstruction.Configuration(
+                trackID: secondaryTrack.trackID
+            )
             let secondarySource = AVURLAsset(url: equipmentURL)
             guard let secondarySourceTrack = try await secondarySource.loadTracks(withMediaType: .video).first else {
                 throw VideoFeatureError.assetNotReadable(equipmentAsset.filename)
@@ -104,7 +102,7 @@ struct DefaultVideoExportService: VideoExporting {
                 width: pipSize.width,
                 height: pipSize.height
             )
-            secondaryLayer.setTransform(
+            secondaryLayerConfiguration.setTransform(
                 try await VideoExportTransforms.placedTransform(
                     for: secondarySourceTrack,
                     destination: pipRect,
@@ -114,11 +112,14 @@ struct DefaultVideoExportService: VideoExporting {
                 ),
                 at: .zero
             )
+            let secondaryLayer = AVVideoCompositionLayerInstruction(configuration: secondaryLayerConfiguration)
             layerInstructions.insert(secondaryLayer, at: 0)
         }
 
-        instruction.layerInstructions = layerInstructions
-        videoComposition.instructions = [instruction]
+        var instructionConfiguration = AVVideoCompositionInstruction.Configuration()
+        instructionConfiguration.timeRange = CMTimeRange(start: .zero, duration: duration)
+        instructionConfiguration.layerInstructions = layerInstructions
+        let instruction = AVVideoCompositionInstruction(configuration: instructionConfiguration)
 
         let overlayLayer = overlayBuilder.buildOverlayLayer(request: request, renderSize: request.renderSize)
         let videoLayer = CALayer()
@@ -127,10 +128,16 @@ struct DefaultVideoExportService: VideoExporting {
         parentLayer.frame = CGRect(origin: .zero, size: request.renderSize)
         parentLayer.addSublayer(videoLayer)
         parentLayer.addSublayer(overlayLayer)
-        videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
+        let animationTool = AVVideoCompositionCoreAnimationTool(
             postProcessingAsVideoLayer: videoLayer,
             in: parentLayer
         )
+        var videoCompositionConfiguration = AVVideoComposition.Configuration()
+        videoCompositionConfiguration.renderSize = request.renderSize
+        videoCompositionConfiguration.frameDuration = CMTime(value: 1, timescale: request.frameRate)
+        videoCompositionConfiguration.instructions = [instruction]
+        videoCompositionConfiguration.animationTool = animationTool
+        let videoComposition = AVVideoComposition(configuration: videoCompositionConfiguration)
 
         if FileManager.default.fileExists(atPath: request.outputURL.path) {
             try FileManager.default.removeItem(at: request.outputURL)

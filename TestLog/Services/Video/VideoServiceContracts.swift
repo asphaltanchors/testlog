@@ -8,7 +8,7 @@
 import Foundation
 import CoreGraphics
 
-struct ImportedAssetCandidate: Identifiable, Hashable, Sendable {
+nonisolated struct ImportedAssetCandidate: Identifiable, Hashable, Sendable {
     let id = UUID()
     let sourceURL: URL
     let suggestedAssetType: AssetType
@@ -23,7 +23,7 @@ struct ImportedAssetCandidate: Identifiable, Hashable, Sendable {
     }
 }
 
-struct AssetImportMetadata: Sendable {
+nonisolated struct AssetImportMetadata: Sendable {
     var byteSize: Int64?
     var contentType: String?
     var checksumSHA256: String?

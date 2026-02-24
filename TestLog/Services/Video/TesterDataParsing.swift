@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct ParsedForceSample: Identifiable, Hashable {
+nonisolated struct ParsedForceSample: Identifiable, Hashable {
     let id = UUID()
     let timeSeconds: Double
     let forceKN: Double

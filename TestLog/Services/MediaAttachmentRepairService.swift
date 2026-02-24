@@ -3,7 +3,7 @@ import Foundation
 import SwiftData
 
 struct MediaAttachmentRepairService {
-    private struct PendingFileAttachment {
+    private nonisolated struct PendingFileAttachment {
         let test: PullTest
         let fileURL: URL
         let relativePath: String
@@ -12,7 +12,7 @@ struct MediaAttachmentRepairService {
         let metadata: (createdAt: Date, byteSize: Int64?, checksumSHA256: String?)
     }
 
-    struct Report {
+    nonisolated struct Report {
         var relinkedOrphanAssets = 0
         var createdMissingAssets = 0
         var deduplicatedFiles = 0
